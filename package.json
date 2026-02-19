@@ -1,0 +1,28 @@
+{
+  "name": "website-auditor",
+  "version": "1.0.0",
+  "description": "Comprehensive website auditing tool using Lighthouse",
+  "main": "lighthouse-runner.js",
+  "scripts": {
+    "test": "node lighthouse-runner.js https://example.com",
+    "audit": "node lighthouse-runner.js"
+  },
+  "keywords": [
+    "lighthouse",
+    "audit",
+    "seo",
+    "performance",
+    "accessibility"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "^11.7.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

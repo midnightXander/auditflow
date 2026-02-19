@@ -1,0 +1,162 @@
+{
+  "url": "https://martialnovalis.com/",
+  "audit_date": "2026-02-13T04:14:24.941769",
+  "lighthouse": {},
+  "technical_seo": {
+    "title": {
+      "present": true,
+      "content": "Martial Novalis \u2013 Coach en developpement personnel et Business Coach",
+      "length": 68,
+      "optimal": false
+    },
+    "meta_description": {
+      "present": false,
+      "content": null,
+      "length": 0,
+      "optimal": false
+    },
+    "canonical": {
+      "present": true,
+      "url": "https://martialnovalis.com/"
+    },
+    "headings": {
+      "h1": 0,
+      "h2": 2,
+      "h3": 7,
+      "h4": 0,
+      "h5": 3,
+      "h6": 0
+    },
+    "headings_issues": [
+      "No H1 tag found"
+    ],
+    "robots_txt": true,
+    "sitemap_xml": true
+  },
+  "meta_info": {},
+  "security": {
+    "https": true,
+    "security_headers": {
+      "strict_transport_security": false,
+      "x_frame_options": false,
+      "x_content_type_options": false,
+      "content_security_policy": false
+    },
+    "ssl_valid": true
+  },
+  "broken_links": {
+    "total_checked": 41,
+    "total_found": 41,
+    "broken_count": 5,
+    "working_count": 36,
+    "broken_links": [
+      {
+        "url": "https://twitter.com/MartialNovalis",
+        "type": "link",
+        "text": "",
+        "status_code": 403
+      },
+      {
+        "url": "https://www.linkedin.com/in/novalis-coach-martial-283a45289/",
+        "type": "link",
+        "text": "",
+        "status_code": 999
+      },
+      {
+        "url": "https://twitter.com/MartialNovalis",
+        "type": "link",
+        "text": "Twitter",
+        "status_code": 403
+      },
+      {
+        "url": "https://twitter.com/MartialNovalis",
+        "type": "link",
+        "text": "",
+        "status_code": 403
+      },
+      {
+        "url": "https://www.linkedin.com/in/novalis-coach-martial-283a45289/",
+        "type": "link",
+        "text": "",
+        "status_code": 999
+      }
+    ],
+    "status": "fail"
+  },
+  "image_optimization": {
+    "total_images": 11,
+    "optimized_images": 3,
+    "score": 75,
+    "issues": {
+      "missing_alt_count": 3,
+      "missing_alt_examples": [
+        "",
+        "",
+        ""
+      ],
+      "missing_dimensions_count": 8,
+      "missing_dimensions_examples": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "no_lazy_loading_count": 8,
+      "old_format_count": 0,
+      "old_format_examples": []
+    },
+    "recommendations": [
+      "Add alt text to 3 images for accessibility and SEO",
+      "Add width/height attributes to 8 images to prevent layout shift",
+      "Implement lazy loading for below-the-fold images"
+    ]
+  },
+  "structured_data": {
+    "score": 20,
+    "has_json_ld": false,
+    "json_ld_count": 0,
+    "json_ld_types": [],
+    "has_microdata": true,
+    "microdata_types": [
+      "https://schema.org/WPFooter",
+      "https://schema.org/WPHeader",
+      "http://schema.org/WebSite"
+    ],
+    "has_open_graph": false,
+    "open_graph_properties": [],
+    "has_twitter_card": false,
+    "twitter_card_type": "none",
+    "status": "poor",
+    "recommendations": [
+      "Add JSON-LD structured data for better search engine understanding",
+      "Add Open Graph tags for better social media sharing (og:title, og:type, og:image, og:url)",
+      "Add Twitter Card meta tags for enhanced Twitter sharing"
+    ]
+  },
+  "content_quality": {
+    "score": 55,
+    "word_count": 448,
+    "sentence_count": 16,
+    "paragraph_count": 20,
+    "avg_sentence_length": 28.0,
+    "avg_paragraph_length": 19.0,
+    "heading_structure": {
+      "h1": 0,
+      "h2": 2,
+      "h3": 7
+    },
+    "content_to_code_ratio": 5.4,
+    "reading_ease_score": 17.8,
+    "reading_level": "Very Difficult (College graduate)",
+    "status": "needs_improvement",
+    "recommendations": [
+      "Consider adding more content (currently 448 words)",
+      "Improve content-to-code ratio (currently 5.4%)"
+    ]
+  },
+  "errors": [
+    "Lighthouse audit failed: Lighthouse failed: node:internal/modules/cjs/loader:1404\n  throw err;\n  ^\n\nError: Cannot find module 'E:\\work\\alex\\website_auditor\\backend\\lighthouse-runner.js'\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\n    at Function._load (node:internal/modules/cjs/loader:1211:37)\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n    at node:internal/main/run_main_module:36:49 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v22.16.0\n"
+  ],
+  "overall_score": 50
+}
