@@ -31,9 +31,9 @@ RUN npm ci --no-audit --no-fund
 WORKDIR /app
 COPY . /app
 
-EXPOSE $PORT
+EXPOSE 8000
 
 ENV PATH="/usr/local/bin:${PATH}"
 
 # Adjust the command to how you run your app in production (uvicorn/gunicorn)
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "$PORT", "--workers", "1"]
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
