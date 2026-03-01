@@ -1,65 +1,59 @@
-/**
- * Lighthouse Runner
- * Runs comprehensive Lighthouse audits and returns detailed results
- */
-// import lighthouse from 'lighthouse';
-// // import chromeLauncher from 'chrome-launcher';
-// import fs from 'fs/promises';
-// import path from 'path';
-// const lighthouse = require('lighthouse');
 const _lighthouse = require('lighthouse');
 const lighthouse = (_lighthouse && (_lighthouse.lighthouse || _lighthouse.default)) || _lighthouse;
-const chromeLauncher = require('chrome-launcher');
+const puppeteer = require('puppeteer'); // uses downloaded Chromium
 const fs = require('fs').promises;
 const path = require('path');
 
-/**
- * Run Lighthouse audit on a URL
- * @param {string} url - URL to audit
- * @param {object} options - Lighthouse options
- * @returns {Promise<object>} - Lighthouse results
- */
-async function runLighthouseAudit(url, options = {}) {
-  const chromeLaunchOptions = {
-    chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox'],
-    ...(process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : {})
-  };
+ 
+ async function runLighthouseAudit(url, options = {}) {
+  
+  // Launch Chromium via Puppeteer (it will download a compatible browser on npm install)
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+  });
 
-  const chrome = await chromeLauncher.launch(chromeLaunchOptions);
+  // Extract the DevTools WebSocket endpoint port so Lighthouse can connect
+  const wsEndpoint = browser.wsEndpoint(); // e.g. ws://127.0.0.1:9222/devtools/browser/....
+  const port = new URL(wsEndpoint).port;
 
   const defaultOptions = {
     logLevel: 'info',
     output: 'json',
     onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'],
-    port: chrome.port,
+    port: Number(port),
     ...options
   };
+    
+ 
+   try {
+     console.log(`🔍 Starting Lighthouse audit for: ${url}`);
+     const runnerResult = await lighthouse(url, defaultOptions);
+ 
+     // The actual result from Lighthouse
+     const result = runnerResult.lhr;
 
-  // try {
-    console.log(`🔍 Starting Lighthouse audit for: ${url}`);
-    const runnerResult = await lighthouse(url, defaultOptions);
+    // Close Puppeteer browser
+    await browser.close();
 
-    // The actual result from Lighthouse
-    const result = runnerResult.lhr;
-
-    await chrome.kill();
-
-    return {
-      success: true,
-      url: result.finalUrl,
-      fetchTime: result.fetchTime,
-      categories: extractCategories(result),
-      audits: extractKeyAudits(result),
-      metrics: extractMetrics(result),
-      opportunities: extractOpportunities(result),
-      diagnostics: extractDiagnostics(result),
-      fullReport: result
-    };
-
-  // } catch (error) {
-  //   await chrome.kill();
-  //   throw error;
-  // }
+     return {
+       success: true,
+       url: result.finalUrl,
+       fetchTime: result.fetchTime,
+       categories: extractCategories(result),
+       audits: extractKeyAudits(result),
+       metrics: extractMetrics(result),
+       opportunities: extractOpportunities(result),
+       diagnostics: extractDiagnostics(result),
+       fullReport: result
+     };
+ 
+  } catch (error) {
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
+    throw error;
+  }
 }
 
 /**
