@@ -10,7 +10,16 @@ async function getLighthouse() {
   _lighthouseFn = (mod && (mod.lighthouse || mod.default)) || mod;
   return _lighthouseFn;
 }
-const chromeLauncher = require('chrome-launcher');
+// const chromeLauncher = require('chrome-launcher');
+// chrome-launcher may be published as ESM; load dynamically like lighthouse
+let _chromeLauncher = null;
+async function getChromeLauncher() {
+  if (_chromeLauncher) return _chromeLauncher;
+  const mod = await import('chrome-launcher');
+  // prefer the module namespace or default export that provides .launch()
+  _chromeLauncher = (mod && (mod.default || mod)) || mod;
+  return _chromeLauncher;
+}
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -26,6 +35,8 @@ async function runLighthouseAudit(url, options = {}) {
     ...(process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : {})
   };
 
+  // const chrome = await chromeLauncher.launch(chromeLaunchOptions);
+  const chromeLauncher = await getChromeLauncher();
   const chrome = await chromeLauncher.launch(chromeLaunchOptions);
 
   const defaultOptions = {
