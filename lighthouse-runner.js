@@ -2,13 +2,14 @@
  * Lighthouse Runner
  * Runs comprehensive Lighthouse audits and returns detailed results
  */
-// import lighthouse from 'lighthouse';
-// // import chromeLauncher from 'chrome-launcher';
-// import fs from 'fs/promises';
-// import path from 'path';
-// const lighthouse = require('lighthouse');
-const _lighthouse = require('lighthouse');
-const lighthouse = (_lighthouse && (_lighthouse.lighthouse || _lighthouse.default)) || _lighthouse;
+// Lighthouse is published as an ES module; load it dynamically at runtime
+let _lighthouseFn = null;
+async function getLighthouse() {
+  if (_lighthouseFn) return _lighthouseFn;
+  const mod = await import('lighthouse');
+  _lighthouseFn = (mod && (mod.lighthouse || mod.default)) || mod;
+  return _lighthouseFn;
+}
 const chromeLauncher = require('chrome-launcher');
 const fs = require('fs').promises;
 const path = require('path');
@@ -37,6 +38,7 @@ async function runLighthouseAudit(url, options = {}) {
 
   // try {
     console.log(`🔍 Starting Lighthouse audit for: ${url}`);
+    const lighthouse = await getLighthouse();
     const runnerResult = await lighthouse(url, defaultOptions);
 
     // The actual result from Lighthouse
