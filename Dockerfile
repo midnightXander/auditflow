@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV CHROME_PATH=/usr/bin/chromium
+# ENV CHROME_PATH=/usr/bin/chromium
 
 # Install OS deps, Chromium and Node.js (Node from NodeSource)
 RUN apt-get update && \
@@ -10,21 +10,24 @@ RUN apt-get update && \
       libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libx11-6 \
       libxcomposite1 libxdamage1 libxrandr2 libxss1 libasound2 \
       fonts-liberation xdg-utils chromium && \
-    # install Node 18.x (adjust version if needed)
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
+    # install Node 24.x (adjust version if needed)
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y nodejs npm && \
     rm -rf /var/lib/apt/lists/*
+
+  
 
 WORKDIR /app
 
 # Copy Python requirements & install
 COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip  
 RUN pip install -r /app/requirements.txt
 
 # Install Node deps for the lighthouse runner
 COPY package.json package-lock.json /app/
 WORKDIR /app/
+RUN node -v && npm -v
 RUN npm ci --no-audit --no-fund
 
 # Copy project sources

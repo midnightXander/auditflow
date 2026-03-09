@@ -20,7 +20,9 @@
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "chrome-launcher": "^1.2.1",
-    "lighthouse": "^11.7.1"
+    "chromium": "^3.0.3",
+    "lighthouse": "^11.7.1",
+    "puppeteer": "^24.38.0"
   },
   "engines": {
     "node": ">=18.0.0"

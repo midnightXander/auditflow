@@ -20,9 +20,12 @@ async function getChromeLauncher() {
   _chromeLauncher = (mod && (mod.default || mod)) || mod;
   return _chromeLauncher;
 }
+
+
 const fs = require('fs').promises;
 const path = require('path');
-
+const chromium = require('chromium');
+console.log("Using Chrome executable at:", chromium.path);
 /**
  * Run Lighthouse audit on a URL
  * @param {string} url - URL to audit
@@ -32,7 +35,11 @@ const path = require('path');
 async function runLighthouseAudit(url, options = {}) {
   const chromeLaunchOptions = {
     chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox'],
-    ...(process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : {})
+    ...(
+      // process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : 
+      {
+      chromePath: chromium.path
+    })
   };
 
   // const chrome = await chromeLauncher.launch(chromeLaunchOptions);

@@ -4,7 +4,11 @@ const puppeteer = require('puppeteer'); // uses downloaded Chromium
 const fs = require('fs').promises;
 const path = require('path');
 
- 
+puppeteer.executablePath = () => {
+  const chromium = require('chromium');
+  return process.env.CHROME_PATH || chromium.path;
+}
+console.log("Using Chrome executable at:", puppeteer.executablePath()); 
  async function runLighthouseAudit(url, options = {}) {
   
   // Launch Chromium via Puppeteer (it will download a compatible browser on npm install)
