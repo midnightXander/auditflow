@@ -59,7 +59,7 @@ async function runLighthouseAudit(url, options = {}) {
     const lighthouse = await getLighthouse();
     const runnerResult = await lighthouse(url, defaultOptions);
 
-    // The actual result from Lighthouse
+  // The actual result from Lighthouse
     const result = runnerResult.lhr;
 
     await chrome.kill();
