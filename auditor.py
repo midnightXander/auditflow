@@ -40,7 +40,8 @@ class WebsiteAuditor:
             url = 'https://' + url
         return url
     
-    async def run_lighthouse_audit(self) -> Dict[str, Any]:
+    # async def run_lighthouse_audit(self) -> Dict[str, Any]:
+    def run_lighthouse_audit(self) -> Dict[str, Any]:
         """
         Run full Lighthouse audit using Node.js Lighthouse package
         Returns comprehensive audit results including all categories
@@ -636,7 +637,8 @@ class WebsiteAuditor:
         
         # Run Lighthouse audit (async)
         print("1. Running Lighthouse audit...")
-        self.results["lighthouse"] = await self.run_lighthouse_audit()
+        # self.results["lighthouse"] = await self.run_lighthouse_audit()
+        self.results["lighthouse"] = self.run_lighthouse_audit()
         
         # Run technical SEO audit
         print("2. Auditing technical SEO...")
