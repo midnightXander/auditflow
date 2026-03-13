@@ -3,6 +3,7 @@
  * Runs comprehensive Lighthouse audits and returns detailed results
  */
 // Lighthouse is published as an ES module; load it dynamically at runtime
+//
 let _lighthouseFn = null;
 async function getLighthouse() {
   if (_lighthouseFn) return _lighthouseFn;
