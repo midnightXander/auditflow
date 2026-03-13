@@ -63,10 +63,12 @@ class WebsiteAuditor:
                 )
                 
                 if result.returncode != 0:
+                    print(f"Lighthouse failed: {result.stderr}")
                     raise Exception(f"Lighthouse failed: {result.stderr}")
                 
                 # Read the results
                 with open(tmp_path, 'r',encoding='utf-8', errors='replace') as f:
+                    print("Lighthouse audit succesful, saving")
                     lighthouse_data = json.load(f)
                 
                 # Clean up temp file
