@@ -23,7 +23,16 @@ console.log("Using Chrome executable at:", puppeteer.executablePath());
   // Launch Chromium via Puppeteer (it will download a compatible browser on npm install)
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+    args: ['--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',        // avoid /dev/shm issues in containers
+      '--disable-extensions',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--single-process',                // run in single process (risky but helps OOM)
+      '--disable-background-networking'
+    ]
   });
 
   // Extract the DevTools WebSocket endpoint port so Lighthouse can connect
