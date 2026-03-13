@@ -11,8 +11,8 @@ RUN apt-get update && \
       libxcomposite1 libxdamage1 libxrandr2 libxss1 libasound2 \
       fonts-liberation xdg-utils chromium && \
     # install Node 24.x (adjust version if needed)
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
-    apt-get install -y nodejs npm && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
   
