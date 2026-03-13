@@ -60,7 +60,7 @@ class WebsiteAuditor:
                     text=True,
                     encoding='utf-8',   # decode subprocess output as UTF-8 (handles most cases for windows compatibility)
                     errors='replace',  # avoid decode errors by replacing invalid bytes
-                    timeout=120  # 2 minute timeout
+                    timeout=300  # 5 minute timeout
                 )
                 
                 if result.returncode != 0:
@@ -74,7 +74,7 @@ class WebsiteAuditor:
                 
                 # Clean up temp file
                 os.unlink(tmp_path)
-                
+                print(lighthouse_data)
                 return lighthouse_data
                 
             except subprocess.TimeoutExpired:
