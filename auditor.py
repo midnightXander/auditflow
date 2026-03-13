@@ -55,7 +55,7 @@ class WebsiteAuditor:
             try:
                 # Run Lighthouse via Node.js
                 result = subprocess.run(
-                    ['node', 'lighthouse-runner.js', self.url, tmp_path],
+                    ['node', 'lighthouse-runner-puppeteer.js', self.url, tmp_path],
                     capture_output=True,
                     text=True,
                     encoding='utf-8',   # decode subprocess output as UTF-8 (handles most cases for windows compatibility)
@@ -627,6 +627,7 @@ class WebsiteAuditor:
         return recommendations
     
     
+
     async def run_full_audit(self) -> Dict[str, Any]:
         """
         Run complete audit including all checks

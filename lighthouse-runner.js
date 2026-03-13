@@ -32,18 +32,47 @@ console.log("Using Chrome executable at:", chromium.path);
  * @param {object} options - Lighthouse options
  * @returns {Promise<object>} - Lighthouse results
  */
+
+async function waitForPort(port, timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(res => setTimeout(res, 150));
+    try {
+      await new Promise((resolve, reject) => {
+        const sock = net.connect({ port, host: '127.0.0.1' }, () => { sock.destroy(); resolve(); });
+        sock.on('error', err => { sock.destroy(); reject(err); });
+      });
+      return;
+    } catch (_) { /* retry */ }
+  }
+  throw new Error(`timeout waiting for port ${port}`);
+}
+
 async function runLighthouseAudit(url, options = {}) {
   const chromeLaunchOptions = {
-    chromeFlags: ['--headless', '--disable-gpu', '--no-sandbox'],
+    chromeFlags: [
+      '--headless',
+      '--disable-gpu',
+      '--no-sandbox',
+      // '--disable-dev-shm-usage',        // important in containers
+      // '--disable-setuid-sandbox',
+      // '--disable-extensions',
+      // '--disable-background-timer-throttling',
+      // '--disable-renderer-backgrounding'
+    ],
     ...(
-      // process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : 
-      {
-      chromePath: chromium.path
-    })
+      process.env.CHROME_PATH ? { chromePath: process.env.CHROME_PATH } : { chromePath: chromium.path }
+    //   {
+    //   chromePath: chromium.path
+    // }
+  )
   };
 
   // const chrome = await chromeLauncher.launch(chromeLaunchOptions);
   const chromeLauncher = await getChromeLauncher();
+
+  
+
   const chrome = await chromeLauncher.launch(chromeLaunchOptions);
 
   const defaultOptions = {
@@ -76,10 +105,82 @@ async function runLighthouseAudit(url, options = {}) {
       fullReport: result
     };
 
+  //*****Updates
+  
   // } catch (error) {
   //   await chrome.kill();
   //   throw error;
   // }
+
+  // retry loop for transient chrome/session failures
+  // const maxAttempts = 3;
+  // let lastErr;
+  // for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  //   let chrome;
+  //   try {
+  //     chrome = await chromeLauncher.launch(chromeLaunchOptions);
+  //     console.log('launched chrome pid=', chrome.process?.pid, 'port=', chrome.port);
+
+  //     // pipe chrome output for diagnostics (may be undefined on some platforms)
+  //     try {
+  //       if (chrome.process && chrome.process.stdout) {
+  //         chrome.process.stdout.on('data', d => console.log('[CHROME_OUT]', d.toString()));
+  //       }
+  //       if (chrome.process && chrome.process.stderr) {
+  //         chrome.process.stderr.on('data', d => console.error('[CHROME_ERR]', d.toString()));
+  //       }
+  //       if (chrome.process) {
+  //         chrome.process.on('exit', (code, sig) => console.error('[CHROME_EXIT] code=', code, 'sig=', sig));
+  //       }
+  //     } catch (e) { /* ignore logging errors */ }
+
+  //     // wait for DevTools port to be ready
+  //     await waitForPort(chrome.port, 10000);
+
+  //     const defaultOptions = {
+  //       logLevel: 'info',
+  //       output: 'json',
+  //       onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'],
+  //       port: chrome.port,
+  //       ...options
+  //     };
+
+  //     console.log(`🔍 Starting Lighthouse audit for: ${url}`);
+  //     const lighthouse = await getLighthouse();
+
+  //     const runnerResult = await lighthouse(url, defaultOptions);
+  //     const result = runnerResult.lhr;
+
+  //     // success — cleanup and return
+  //     try { await chrome.kill(); } catch (_) {}
+  //     return {
+  //       success: true,
+  //       url: result.finalUrl,
+  //       fetchTime: result.fetchTime,
+  //       categories: extractCategories(result),
+  //       audits: extractKeyAudits(result),
+  //       metrics: extractMetrics(result),
+  //       opportunities: extractOpportunities(result),
+  //       diagnostics: extractDiagnostics(result),
+  //       fullReport: result
+  //     };
+  //     } catch (err) {
+  //     lastErr = err;
+  //     console.error(`Lighthouse attempt ${attempt} failed:`, err && err.message || err);
+  //     try { if (chrome) await chrome.kill(); } catch (_) {}
+  //     // retry on transient errors
+  //     if (attempt < maxAttempts && (err.code === 'ECONNREFUSED' || /Session closed|ECONNRESET|Protocol error/i.test(err.message || ''))) {
+  //       const backoff = 500 * attempt;
+  //       console.warn(`Transient error, retrying in ${backoff}ms (${attempt}/${maxAttempts})`);
+  //       await new Promise(r => setTimeout(r, backoff));
+  //       continue;
+  //     }
+  //     break;
+  //   }
+  // }
+
+  // // final failure
+  // throw new Error(`Lighthouse audit failed after ${maxAttempts} attempts: ${lastErr && lastErr.message || 'unknown error'}`);
 }
 
 /**
