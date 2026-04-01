@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: auditflow_postgres
+    environment:
+      POSTGRES_USER: auditflow
+      POSTGRES_PASSWORD: auditflow_password
+      POSTGRES_DB: auditflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auditflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (optional, for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: auditflow_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auditflow_api
+    command: uvicorn api_v2:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://auditflow:auditflow_password@postgres:5432/auditflow
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Next.js Frontend (optional, for full-stack deployment)
+  # frontend:
+  #   build:
+  #     context: ./frontend_v2
+  #     dockerfile: Dockerfile
+  #   container_name: auditflow_frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: http://localhost:8000
+  #   depends_on:
+  #     - api
+
+volumes:
+  postgres_data:
+  redis_data:
