@@ -40,4 +40,4 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 # Adjust the command to how you run your app in production (uvicorn/gunicorn)
 # CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
-CMD ["sh", "-c", "alembic upgrade head && uvicorn backend.api:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn api:app --host 0.0.0.0 --port 8000"]
