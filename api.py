@@ -42,20 +42,62 @@ from tasks import run_audit_task, run_crawl_task, run_comparison_task, run_keywo
 #routes
 from db.admin_routes import router as admin_router
 
+import logging
+from contextlib import asynccontextmanager
+from db.migrations import run_migrations, check_migration_status
+
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI App
 # ──────────────────────────────────────────────────────────────────────────────
 
+logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Startup Events
+# ──────────────────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events
+    More reliable than @app.on_event decorators
+    """
+    # Startup
+    logger.info("🚀 Starting AuditFlow API...")
+    try:
+        logger.info("📦 Running database migrations...")
+        run_migrations()
+        logger.info("✓ Migrations completed")
+    except Exception as e:
+        logger.error(f"✗ Migration failed: {e}")
+        raise
+    
+    try:
+        logger.info("🗄️  Initializing database...")
+        init_db()
+        logger.info("✓ Database initialized")
+        print("✅ API ready to accept requests\n")
+    except Exception as e:
+        logger.warning(f"Database already initialized: {e}")
+    
+    logger.info("✅ API ready to accept requests\n")
+    
+    yield
+    
+    # Shutdown
+    logger.info("🛑 Shutting down AuditFlow API...")
+
 app = FastAPI(
     title="AuditFlow API",
     description="Complete SEO audit platform with authentication",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://auditflow-frontend.vercel.app"],
+    allow_origins=["http://localhost:3000", "https://auditflow-frontend.vercel.app", "https://outaudits.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

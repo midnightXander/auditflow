@@ -13,6 +13,8 @@ from .models import User, Audit, Crawl, Comparison
 from .auth import get_current_user
 from .schemas import UserResponse
 
+from db.migrations import check_migration_status
+
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -207,3 +209,11 @@ async def get_recent_activity(
         })
     
     return {"activity": activity}
+
+@router.get("/migrations/status")
+async def get_migration_status(admin_user: User = Depends(get_current_user)):
+    """Get current database migration status (admin only)"""
+    if not admin_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    return check_migration_status()

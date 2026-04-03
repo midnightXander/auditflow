@@ -25,14 +25,14 @@ class User(Base):
     google_id = Column(String(255), unique=True, nullable=True, index=True)
     
     # White-label settings
-    agency_name = Column(String(255), default="AuditSE")
+    agency_name = Column(String(255), default="OUTAudits")
     agency_logo = Column(Text, nullable=True)  # Base64 or URL
     agency_url = Column(String(500), nullable=True)
     accent_color = Column(String(7), default="#0075FF")
     
     # Subscription / Usage
     plan = Column(String(50), default="free")  # free, pro, agency
-    credits_remaining = Column(Integer, default=10)  # Monthly audit credits
+    credits_remaining = Column(Integer, default=20)  # Monthly audit credits
     credits_reset_date = Column(DateTime, nullable=True)
 
     # Stripe

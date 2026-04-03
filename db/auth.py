@@ -325,11 +325,11 @@ def check_and_consume_credits(user: User, db: Session, credits_needed: int = 1) 
     if user.credits_reset_date and user.credits_reset_date < datetime.utcnow():
         # Reset credits based on plan
         plan_credits = {
-            "free": 10,
-            "pro": 100,
-            "agency": 1000,
+            "free": 20,
+            "pro": 1000,
+            "agency": 10000,
         }
-        user.credits_remaining = plan_credits.get(user.plan, 10)
+        user.credits_remaining = plan_credits.get(user.plan, 20)
         user.credits_reset_date = datetime.utcnow() + timedelta(days=30)
         db.commit()
     
