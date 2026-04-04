@@ -62,6 +62,7 @@ class Audit(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     url = Column(String(500), nullable=False)
+    client_name = Column(String(255), nullable=True)
     status = Column(String(20), default="pending")  # pending, running, completed, failed
     progress = Column(Integer, default=0)
     
@@ -87,6 +88,7 @@ class Crawl(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     url = Column(String(500), nullable=False)
+    client_name = Column(String(255), nullable=True)
     max_pages = Column(Integer, default=500)
     status = Column(String(20), default="pending")
     progress = Column(Integer, default=0)
@@ -116,6 +118,7 @@ class Comparison(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     target_url = Column(String(500), nullable=False)
+    client_name = Column(String(255), nullable=True)
     competitor_urls = Column(JSON, nullable=False)  # List of URLs
     status = Column(String(20), default="pending")
     progress = Column(Integer, default=0)

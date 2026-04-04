@@ -83,6 +83,7 @@ class UserUpdate(BaseModel):
 class AuditRequest(BaseModel):
     """Website audit request"""
     url: HttpUrl
+    client_name: str
     
     class Config:
         json_schema_extra = {
@@ -115,6 +116,7 @@ class AuditStatus(BaseModel):
 class CrawlRequest(BaseModel):
     """Site crawl request"""
     url: HttpUrl
+    client_name: str
     max_pages: Optional[int] = 500
     
     class Config:
@@ -134,7 +136,8 @@ class ComparisonRequest(BaseModel):
     """Competitor comparison request"""
     target_url: HttpUrl
     competitor_urls: List[HttpUrl]
-    
+    client_name: str
+
     @field_validator('competitor_urls')
     @classmethod
     def max_competitors(cls, v):

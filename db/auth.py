@@ -321,6 +321,9 @@ def check_and_consume_credits(user: User, db: Session, credits_needed: int = 1) 
     Returns:
         True if credits consumed, False if insufficient
     """
+    # add credits for the admin user
+    if user.is_admin:
+        return True
     # Reset credits if it's a new month
     if user.credits_reset_date and user.credits_reset_date < datetime.utcnow():
         # Reset credits based on plan

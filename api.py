@@ -318,6 +318,7 @@ async def create_audit(
     job_id = str(uuid.uuid4())
     audit = Audit(
         job_id=job_id,
+        client_name=request.client_name,
         user_id=current_user.id,
         url=str(request.url),
         status="pending",
@@ -430,6 +431,7 @@ async def create_crawl(
         job_id=job_id,
         user_id=current_user.id,
         url=str(request.url),
+        client_name=str(request.client_name),
         max_pages=request.max_pages,
         status="pending"
     )
@@ -502,6 +504,7 @@ async def create_compare(
     job_id = str(uuid.uuid4())
     compare = Comparison(
         job_id=job_id,
+        client_name=str(request.client_name),
         user_id=current_user.id,
         target_url=target_url,
         competitor_urls=competitor_urls,
