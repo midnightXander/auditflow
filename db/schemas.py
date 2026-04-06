@@ -74,6 +74,10 @@ class UserUpdate(BaseModel):
     agency_logo: Optional[str] = None
     agency_url: Optional[str] = None
     accent_color: Optional[str] = None
+    plan: Optional[str] = None
+    credits_remaining: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────

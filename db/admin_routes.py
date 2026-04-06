@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from .database import get_db
 from .models import User, Audit, Crawl, Comparison
 from .auth import get_current_user
-from .schemas import UserResponse
+from .schemas import UserResponse, UserUpdate
 
 from db.migrations import check_migration_status
 
@@ -128,10 +128,7 @@ async def list_all_users(
 @router.patch("/users/{user_id}")
 async def update_user_admin(
     user_id: int,
-    plan: str = None,
-    credits: int = None,
-    is_active: bool = None,
-    is_admin: bool = None,
+    request: UserUpdate,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -141,16 +138,17 @@ async def update_user_admin(
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    if plan is not None:
-        user.plan = plan
-    if credits is not None:
-        user.credits_remaining = credits
-    if is_active is not None:
-        user.is_active = is_active
-    if is_admin is not None:
-        user.is_admin = is_admin
-    
+
+    print(user_id, request.plan, request.credits_remaining, request.is_active, request.is_admin)
+    if request.plan is not None:
+        user.plan = request.plan
+    if request.credits_remaining is not None:
+        user.credits_remaining = request.credits_remaining
+    if request.is_active is not None:
+        user.is_active = request.is_active
+    if request.is_admin is not None:
+        user.is_admin = request.is_admin
+
     user.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
