@@ -266,3 +266,35 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Visitor(Base):
+    """Track landing page visitors for conversion analysis"""
+    __tablename__ = "visitors"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Visitor info
+    ip_address = Column(String(45), nullable=False, index=True)  # IPv4 or IPv6
+    country = Column(String(100), nullable=True, index=True)
+    country_code = Column(String(2), nullable=True, index=True)  # ISO 3166-1 alpha-2
+    city = Column(String(100), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    
+    # User agent info
+    user_agent = Column(Text, nullable=True)
+    referer = Column(String(500), nullable=True)
+    
+    # Page info
+    page_url = Column(String(500), nullable=True)
+    
+    # Timestamps
+    visited_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Optional: link to user if they later convert
+    converted = Column(Boolean, default=False, index=True)
+    converted_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    def __repr__(self):
+        return f"<Visitor ip={self.ip_address} country={self.country} visited={self.visited_at}>"

@@ -41,10 +41,12 @@ from tasks import run_audit_task, run_crawl_task, run_comparison_task, run_keywo
 
 #routes
 from db.admin_routes import router as admin_router
+from services.visitor_tracking import track_visitor, get_visitor_analytics, mark_visitor_converted
 
 import logging
 from contextlib import asynccontextmanager
 from db.migrations import run_migrations, check_migration_status
+from fastapi import Request
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI App
@@ -116,7 +118,11 @@ async def startup_event():
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.post("/api/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegister, db: Session = Depends(get_db)):
+async def register(
+    user_data: UserRegister,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Register new user with email/password"""
     
     # Check if user exists
@@ -141,6 +147,17 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    
+    # Mark visitor as converted
+    from services.visitor_tracking import extract_ip_from_request
+    ip_address = extract_ip_from_request(request)
+    from db.models import Visitor
+    visitor = db.query(Visitor).filter(Visitor.ip_address == ip_address).order_by(Visitor.visited_at.desc()).first()
+    if visitor:
+        visitor.converted = True
+        visitor.converted_user_id = user.id
+        db.commit()
+        logger.info(f"[CONVERSION] Visitor {ip_address} converted to user {user.id}")
     
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})
@@ -362,8 +379,8 @@ async def get_audit_status(
         Audit.user_id == current_user.id
     ).first()
     
-    if not audit or current_user.id != audit.user_id:
-        raise HTTPException(status_code=404, detail="Audit not found")
+    # if not audit or current_user.id != audit.user_id:
+    #     raise HTTPException(status_code=404, detail="Audit not found")
     
     update_activity_status(
         db,
@@ -571,6 +588,157 @@ async def get_activity_stats_endpoint(
     
     stats = get_activity_stats(db, current_user.id, days=days, current_month=current_month)
     return stats
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VISITOR TRACKING ENDPOINTS (For conversion analysis)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/track/visitor")
+async def track_landing_page_visitor(
+    request: Request,
+    db: Session = Depends(get_db),
+    page_url: Optional[str] = None,
+    utm_source: Optional[str] = None,
+    utm_medium: Optional[str] = None,
+    utm_campaign: Optional[str] = None,
+):
+    """
+    Track a landing page visitor for conversion analysis
+    
+    No authentication required - called from landing page
+    Captures: IP, Country, User Agent, Referrer, Timestamp
+    
+    Query params (optional):
+    - page_url: URL being visited
+    - utm_source: Traffic source (google, facebook, etc)
+    - utm_medium: Traffic medium (cpc, organic, email, etc)
+    - utm_campaign: Campaign name
+    """
+    
+    visitor = await track_visitor(db, request, page_url=page_url)
+    
+    if visitor:
+        return {
+            "status": "tracked",
+            "visitor_id": visitor.id,
+            "ip": visitor.ip_address,
+            "country": visitor.country,
+            "timestamp": visitor.visited_at.isoformat(),
+            "utm": {
+                "source": utm_source,
+                "medium": utm_medium,
+                "campaign": utm_campaign
+            }
+        }
+    else:
+        return {"status": "error", "message": "Failed to track visitor"}
+
+
+@app.get("/api/visitors/analytics")
+async def get_visitors_analytics(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get visitor analytics and conversion metrics
+    Admin/Owner only - see conversion trends by country, referrer, etc.
+    """
+    
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    analytics = get_visitor_analytics(db, days=days)
+    
+    return {
+        "analytics": analytics,
+        "period": f"Last {days} days",
+        "generated_at": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/api/visitors/list")
+async def list_visitors(
+    page: int = 1,
+    page_size: int = 50,
+    country: Optional[str] = None,
+    converted_only: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List tracked visitors with filtering options
+    Admin only
+    """
+    
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from db.models import Visitor
+    
+    query = db.query(Visitor)
+    
+    if country:
+        query = query.filter(Visitor.country_code == country.upper())
+    
+    if converted_only:
+        query = query.filter(Visitor.converted == True)
+    
+    total = query.count()
+    
+    visitors = query.order_by(Visitor.visited_at.desc())\
+        .offset((page - 1) * page_size)\
+        .limit(page_size)\
+        .all()
+    
+    return PaginatedResponse(
+        items=[{
+            "id": v.id,
+            "ip": v.ip_address,
+            "country": v.country,
+            "country_code": v.country_code,
+            "city": v.city,
+            "referer": v.referer,
+            "visited_at": v.visited_at.isoformat(),
+            "converted": v.converted,
+            "converted_user_id": v.converted_user_id
+        } for v in visitors],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size
+    )
+
+
+@app.post("/api/visitors/{visitor_id}/mark-converted")
+async def mark_visitor_as_converted(
+    visitor_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Mark a visitor as converted when they sign up
+    Call this from your registration endpoint
+    """
+    
+    from db.models import Visitor
+    
+    visitor = db.query(Visitor).filter(Visitor.id == visitor_id).first()
+    
+    if not visitor:
+        raise HTTPException(status_code=404, detail="Visitor not found")
+    
+    visitor.converted = True
+    visitor.converted_user_id = current_user.id
+    db.commit()
+    
+    return {
+        "status": "success",
+        "visitor_id": visitor.id,
+        "converted": True,
+        "user_id": current_user.id
+    }
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HEALTH CHECK

@@ -55,6 +55,8 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
         print(f"✅ Email sent to {to_email}: {subject}")
     except Exception as e:
         print(f"❌ Failed to send email to {to_email}: {e}")
+    
+
 
 
 def send_verification_email(email: str, token: str, user_name: Optional[str] = None):
@@ -284,3 +286,8 @@ def send_credits_low_email(email: str, credits_remaining: int, user_name: Option
     """
     
     send_email(email, f"⚠️ Only {credits_remaining} credits remaining", html)
+
+
+if __name__ == "__main__":
+    # Example usage
+    send_verification_email("labcomvids@gmail.com", "123456")
