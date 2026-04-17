@@ -38,6 +38,15 @@ class User(Base):
     # Stripe
     stripe_customer_id = Column(String(255), unique=True, nullable=True, index=True)
     stripe_subscription_id = Column(String(255), unique=True, nullable=True, index=True)
+
+    # Embed Widget
+    embed_api_key = Column(String(255), unique=True, nullable=True, index=True)
+    embed_enabled = Column(Boolean, default=False)
+    embed_lead_capture = Column(Boolean, default=True)
+    embed_require_email = Column(Boolean, default=True)
+    embed_button_text = Column(String(100), default="Analyze Website")
+    embed_headline = Column(String(200), default="Free Website SEO Audit")
+    embed_description = Column(Text, default="Get a comprehensive SEO analysis in seconds")
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -70,6 +79,10 @@ class Audit(Base):
     overall_score = Column(Integer, nullable=True)
     results = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
+
+    # Embed tracking
+    is_embedded = Column(Boolean, default=False)
+    embed_email = Column(String(255), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -77,6 +90,34 @@ class Audit(Base):
     
     # Relationship
     user = relationship("User", back_populates="audits")
+
+class EmbedLead(Base):
+    """Leads captured from embedded widgets"""
+    __tablename__ = "embed_leads"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Agency owner
+    
+    email = Column(String(255), nullable=False, index=True)
+    website = Column(String(500), nullable=True)
+    audit_id = Column(Integer, ForeignKey("audits.id"), nullable=True)
+    
+    # Lead source tracking
+    source = Column(String(100), default="embed_widget")
+    referrer = Column(String(500), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    
+    # Lead status
+    status = Column(String(50), default="new")  # new, contacted, converted, lost
+    notes = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    user = relationship("User")
+    audit = relationship("Audit")
 
 
 class Crawl(Base):
