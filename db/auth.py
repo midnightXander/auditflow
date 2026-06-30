@@ -16,7 +16,7 @@ import os
 from dotenv import load_dotenv
 import hashlib
 from .database import get_db
-from .models import User, RefreshToken, Activity, ActivityType
+from .models import User, RefreshToken, Activity, ActivityType,Audit, Notification
 
 load_dotenv()
 
@@ -434,24 +434,127 @@ def get_activity_stats(
     """Get activity statistics for a user"""
     since = datetime.utcnow() - timedelta(days=days)
     if current_month:
-        since = since.replace(day=1)
+        since = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Calculate previous calendar month range (start of previous month -> start of current month)
+    start_current_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_day_prev_month = start_current_month - timedelta(days=1)
+    start_prev_month = last_day_prev_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
 
     activities = db.query(Activity).filter(
         Activity.user_id == user_id,
         Activity.created_at >= since
     ).all()
+    #get the percentage increase/decrease compared to the previous month
+    previous_since = since - timedelta(days=30)
+
+    previous_activities = db.query(Activity).filter(
+        Activity.user_id == user_id,
+        Activity.created_at >= start_prev_month,
+        Activity.created_at < start_current_month
+    ).all()
     
+
+    current_total = len(activities)
+    previous_total = len(previous_activities)
+    diff = current_total - previous_total
+
+    # Percent change relative to previous period; avoid division by zero
+    if previous_total == 0:
+        if current_total == 0:
+            diff_percent = 0.0
+        else:
+            # If there were 0 in previous period and >0 now, treat as 100% increase
+            diff_percent = 100.0
+    else:
+        diff_percent = (diff / previous_total) * 100.0
+
+    diff_percent = round(diff_percent, 1)
+
+    audits_this_month = db.query(Audit).filter(Audit.user_id == user_id, Audit.created_at >= since).all()
+    average_score_this_month = sum(audit.overall_score for audit in audits_this_month) / len(audits_this_month) if audits_this_month else 0
+
+    audits_previous_month = db.query(Audit).filter(Audit.user_id == user_id, Audit.created_at >= start_prev_month, Audit.created_at < start_current_month).all()
+    average_score_previous_month = sum(audit.overall_score for audit in audits_previous_month) / len(audits_previous_month) if audits_previous_month else 0
+
+    percent_change = round(((average_score_this_month - average_score_previous_month) / average_score_previous_month * 100), 2) if average_score_previous_month else 0
+
+    average_audit_score = {
+        "current": average_score_this_month,
+        "previous": average_score_previous_month,
+        "change": percent_change
+    }
+    print(average_audit_score)
+
     stats = {
         "total": len(activities),
         "completed": len([a for a in activities if a.status == "completed"]),
         "failed": len([a for a in activities if a.status == "failed"]),
+        "percent_diff" : diff_percent,
+        "average_audit_score" : average_audit_score,
+
         "by_type": {}
     }
     
     # Count by type
-    for activity_type in ActivityType:
-        count = len([a for a in activities if a.activity_type == activity_type.value])
-        if count > 0:
-            stats["by_type"][activity_type.value] = count
+    # for activity_type in ActivityType:
+    #     count = len([a for a in activities if a.activity_type == activity_type.value])
+    #     if count > 0:
+    #         stats["by_type"][activity_type.value] = count
+            
+    #         stats['by_type'][f'{activity_type.value}_percent_diff'] = round((len([a for a in activities if a.activity_type == activity_type.value]) - len([a for a in previous_activities if a.activity_type == activity_type.value])) / (len([a for a in previous_activities if a.activity_type == activity_type.value]) + 1) * 100, 2)
     
+    # Count by type and compute percent diffs per type (relative to previous period)
+    for activity_type in ActivityType:
+        current_count = len([a for a in activities if a.activity_type == activity_type.value])
+        previous_count = len([a for a in previous_activities if a.activity_type == activity_type.value])
+
+        # if current_count > 0:
+        stats["by_type"][activity_type.value] = current_count
+
+        # percent diff for this type
+        if previous_count == 0:
+            type_percent_diff = 100.0 if current_count > 0 else 0.0
+        else:
+            type_percent_diff = ((current_count - previous_count) / previous_count) * 100.0
+
+        stats['by_type'][f'{activity_type.value}_percent_diff'] = round(type_percent_diff, 2)
+
+    # include raw previous total and diff if useful
+    stats["previous_total"] = previous_total
+    stats["diff"] = diff
     return stats
+
+
+def create_notification(
+    db: Session,
+    user_id: int,
+    type: str,
+    title: str,
+    message: Optional[str] = None,
+    metadata: Optional[dict] = None
+):
+    """Create a user notification"""
+    
+    notif = Notification(
+        user_id=user_id,
+        type=type,
+        title=title,
+        message=message,
+        meta=metadata or {},
+        read=False
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(notif)
+    return notif
+
+def mark_notification_read(db: Session, notification_id: int, user_id: int):
+    
+    n = db.query(Notification).filter(Notification.id == notification_id, Notification.user_id == user_id).first()
+    if n:
+        n.read = True
+        db.commit()
+        db.refresh(n)
+    return n

@@ -1,47 +1,56 @@
 """
 Authenticated API - Complete FastAPI server with JWT auth, Google OAuth, and database
 """
+from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 import uuid
 from datetime import datetime, timedelta
+import base64,os
+from urllib.parse import urlparse
+from sqlalchemy import desc, and_, func
 
 # Database and models
 from db.database import get_db, init_db
-from db.models import ActivityType, User, Audit, Crawl, Comparison, KeywordAnalysis, BacklinkAnalysis, RefreshToken
+from db.models import ActivityType, User, Audit, Crawl, Comparison, KeywordAnalysis, BacklinkAnalysis, RefreshToken, Notification, RankTracking, RankHistory, TrackedKeyword, KeywordHistory 
 
 # Authentication
 from db.auth import (
     get_current_user, get_current_user_optional, check_and_consume_credits,
-    authenticate_user, create_access_token, create_refresh_token, get_user_activity_history, log_activity, update_activity_status,
-    verify_google_token, verify_token, get_password_hash, get_activity_stats,
+    authenticate_user, create_access_token, create_refresh_token, get_user_activity_history, log_activity, mark_notification_read, update_activity_status,
+    verify_google_token, verify_token, get_password_hash, get_activity_stats, create_notification,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 # Schemas
 from db.schemas import (
-    ActivityListItem, UserRegister, UserLogin, GoogleAuthRequest, TokenResponse, RefreshTokenRequest,
+    ActivityListItem, CreateComparisonRequest, CreateComparisonResponse, UserRegister, UserLogin, GoogleAuthRequest, TokenResponse, RefreshTokenRequest,
     UserResponse, UserUpdate,
+    NotificationItem,
     AuditRequest, AuditResponse, AuditStatus, CrawlRequest,
     ComparisonRequest, KeywordRequest, BacklinkRequest,
-    AuditListItem, PaginatedResponse
+    AuditListItem, PaginatedResponse, SiteDataResponse, SiteHealthOverview, SiteRecommendation, ComparisonSummary, KeywordRanking, CrawlSummary, CrawlListItem,
+    RankTrackingResponse, RankTrackingRequest, RankTrackingListItem, RankTrackingStatus, CreateTrackingRequest, CreateTrackingResponse
 )
 
-# Audit engines
-from auditor import WebsiteAuditor
-from apps.crawler import crawl_website
-from apps.competitor import compare_competitors
-from apps.keywords import analyze_keywords
-from apps.backlinks import analyze_backlinks, find_competitor_gaps
+from db.payment_schemas import (
+    CheckoutLinkRequest, CheckoutLinkResponse, SubscriptionStatus, 
+    CancelSubscriptionResponse, PlanInfo, PlansResponse, TrialStatus,
+    StartTrialResponse, TrialUpgradeOffer
+)
 
-from tasks import run_audit_task, run_crawl_task, run_comparison_task, run_keyword_analysis_task
+
+from tasks import run_audit_task, run_crawl_task, run_comparison_task, run_keyword_analysis_task, run_rank_tracking_task, calculate_next_check, check_for_alerts, run_tracking_task, _next_check_time
 
 #routes
 from db.admin_routes import router as admin_router
+from routes.embed_router import router as embed_router
+from routes.tracking_routes import router as tracking_router
 from services.visitor_tracking import track_visitor, get_visitor_analytics, mark_visitor_converted
+from services import whop_service, email_service
 
 import logging
 from contextlib import asynccontextmanager
@@ -99,13 +108,16 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://auditflow-frontend.vercel.app", "https://outaudits.com"],
+    # allow_origins=["http://localhost:3000", "https://auditflow-frontend.vercel.app", "https://outaudits.com"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(admin_router)
+app.include_router(embed_router)
+app.include_router(tracking_router)
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -116,6 +128,8 @@ async def startup_event():
 # ──────────────────────────────────────────────────────────────────────────────
 # AUTHENTICATION ENDPOINTS
 # ──────────────────────────────────────────────────────────────────────────────
+
+#---------------------------------------------------------
 
 @app.post("/api/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(
@@ -147,6 +161,15 @@ async def register(
     db.add(user)
     db.commit()
     db.refresh(user)
+    create_notification(
+            db=db,
+            user_id=user.id,
+            type="welcome",
+            title="Welcome to OUTAUDITS",
+            message=f"Add your agency settings to get started.",
+            # metadata={"job_id": job_id, "url": str(req.domain)}
+            )
+    # email_service.send_welcome_email()
     
     # Mark visitor as converted
     from services.visitor_tracking import extract_ip_from_request
@@ -228,10 +251,20 @@ async def google_auth(auth_data: GoogleAuthRequest, db: Session = Depends(get_db
                 credits_reset_date=datetime.utcnow() + timedelta(days=30)
             )
             db.add(user)
+            
+            create_notification(
+            db=db,
+            user_id=user.id,
+            type="welcome",
+            title="Welcome to OUTAUDITS",
+            message=f"Add your agency settings to get started.",
+            # metadata={"job_id": job_id, "url": str(req.domain)}
+            )
+            # email_service.send_welcome_email()
         
         db.commit()
         db.refresh(user)
-    
+
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(user.id, db)
@@ -286,6 +319,8 @@ async def refresh_access_token(
 @app.get("/api/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user profile"""
+    if current_user:
+        print(current_user.agency_url)
     return current_user
 
 
@@ -296,7 +331,7 @@ async def update_current_user(
     db: Session = Depends(get_db)
 ):
     """Update current user profile"""
-    
+    print(user_update)
     update_data = user_update.model_dump(exclude_unset=True)
     
     for field, value in update_data.items():
@@ -304,6 +339,7 @@ async def update_current_user(
     
     current_user.updated_at = datetime.utcnow()
     db.commit()
+    print(current_user.agency_name)
     db.refresh(current_user)
     
     return current_user
@@ -354,6 +390,14 @@ async def create_audit(
         target=str(request.url),
         status="pending"
     )
+    create_notification(
+    db=db,
+    user_id=current_user.id,
+    type="audit",
+    title="Audit started",
+    message=f"Your audit for {request.url} has been queued (job {job_id}).",
+    metadata={"job_id": job_id, "url": str(request.url)}
+)
     
     
     # Start background task
@@ -379,14 +423,16 @@ async def get_audit_status(
         Audit.user_id == current_user.id
     ).first()
     
-    # if not audit or current_user.id != audit.user_id:
-    #     raise HTTPException(status_code=404, detail="Audit not found")
+    if not audit or current_user.id != audit.user_id:
+        raise HTTPException(status_code=404, detail="Audit not found")
     
     update_activity_status(
         db,
         status=audit.status,
         activity_id=job_id,
     )
+    
+    
     
     return AuditStatus(
         job_id=audit.job_id,
@@ -409,11 +455,27 @@ async def list_audits(
     
     query = db.query(Audit).filter(Audit.user_id == current_user.id)
     total = query.count()
+
+    this_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     audits = query.order_by(Audit.created_at.desc())\
         .offset((page - 1) * page_size)\
         .limit(page_size)\
         .all()
+    audits_this_month = db.query(Audit).filter(Audit.user_id == current_user.id, Audit.created_at >= this_month).all()
+    
+    
+    avg_score = 0
+    total_score = 0
+    for a in audits:
+        if a.overall_score:
+            total_score += a.overall_score
+
+    if total_score != 0:
+        avg_score = total_score/len(audits)     
+        
+
+
     
     return PaginatedResponse(
         items=[AuditListItem.model_validate(a) for a in audits],
@@ -423,6 +485,74 @@ async def list_audits(
         total_pages=(total + page_size - 1) // page_size
     )
 
+@app.get("/api/crawls")
+async def list_craws(
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List user's crawl history"""
+    
+    query = db.query(Crawl).filter(Crawl.user_id == current_user.id)
+    total = query.count()
+    
+    crawls = query.order_by(Crawl.created_at.desc())\
+        .offset((page - 1) * page_size)\
+        .limit(page_size)\
+        .all()
+    
+    def count_issues(issues: dict) -> int:
+        """
+        Count the total number of issues across all categories in the issues dict.
+        Handles dicts, lists, and empty values gracefully.
+        """
+        total = 0
+        for category, value in issues.items():
+            if isinstance(value, dict):
+                # Count entries in dict
+                total += len(value)
+            elif isinstance(value, list):
+                # Count entries in list
+                total += len(value)
+            else:
+                # If it's something else (unlikely), skip
+                continue
+        return total
+
+    total_pages_crawled = 0
+    total_issues_found = 0
+
+
+    for c in crawls:
+        total_pages_crawled += c.results.get("summary").get("total_pages_crawled",0)
+        total_issues_found += count_issues(c.results.get("issues",{}))
+
+    metadata = {
+        'total_pages_crawled' : total_pages_crawled,
+        'total_issues_found' : total_issues_found,
+    }
+
+    
+    
+    return PaginatedResponse(
+        items=[{
+            "id": c.id,
+            "job_id": c.job_id,
+            "url": c.url,
+            "status": c.status,
+            "pages_crawled": c.results.get("summary").get("total_pages_crawled",0),
+            "issues_found": count_issues(c.results.get("issues",{})),
+            "created_at": c.created_at,
+            "completed_at": c.completed_at,
+            "results" : c.results,
+        } for c in crawls],
+        metadata = metadata,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size
+    )
 
     
 
@@ -463,6 +593,14 @@ async def create_crawl(
         target=str(request.url),
         status="pending"
     )
+    create_notification(
+    db=db,
+    user_id=current_user.id,
+    type="crawl",
+    title=f"Crawl started!",
+    message=f"Your audit for {request.url} has been queued (job).",
+    metadata={"job_id": job_id, "url": str(request.url)}
+)
     
     # TODO: Add background task
     background_tasks.add_task(run_crawl_task, job_id, str(request.url), current_user.id, db)
@@ -485,11 +623,13 @@ async def get_crawl_status(
     if not crawl:
         raise HTTPException(status_code=404, detail="Crawl not found")
     
+
     update_activity_status(
         db,
         status=crawl.status,
         activity_id=job_id,
     )
+
     
     return AuditStatus(
         job_id=crawl.job_id,
@@ -499,50 +639,620 @@ async def get_crawl_status(
         error=crawl.error
     )
 
-
-@app.post("/api/compare", response_model=AuditResponse)
-async def create_compare(
-    request: ComparisonRequest,
+def _domain(url: str) -> str:
+    try:
+        netloc = urlparse(url if "://" in url else f"https://{url}").netloc
+        return netloc.replace("www.", "") or url
+    except Exception:
+        return url
+    
+@app.post("/api/comparisons", response_model=CreateComparisonResponse, status_code=201)
+async def create_comparison(
+    req: CreateComparisonRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not check_and_consume_credits(current_user, db, credits_needed=2):
+        raise HTTPException(402, f"Insufficient credits ({current_user.credits_remaining} left)")
+ 
+    job_id = str(uuid.uuid4())
+    comp = Comparison(
+        job_id=job_id,
+        user_id=current_user.id,
+        target_url=req.target_url,
+        competitor_urls=req.competitor_urls,
+        client_name=req.client_name or _domain(req.target_url),
+        status="pending",
+        progress=0,
+    )
+    db.add(comp)
+    db.commit()
+ 
+    background_tasks.add_task(run_comparison_task, job_id)
+ 
+    return CreateComparisonResponse(
+        job_id=job_id,
+        status="pending",
+        message=f"Comparison started: {req.target_url} vs {len(req.competitor_urls)} competitors",
+    )
+
+
+@app.get("/api/comparisons/kpis")
+async def get_comaprisons_kpis(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Stat cards:
+      - total_comparisons
+      - domains_analyzed (distinct target + competitor domains)
+      - avg_score_gap (target - best competitor, averaged across completed runs)
+      - strongest_win   { comparison with largest positive gap }
+      - biggest_gap     { comparison with largest negative gap }
+    """
+    completed = (
+        db.query(Comparison)
+        .filter(Comparison.user_id == current_user.id, Comparison.status == "completed")
+        .all()
+    )
+ 
+    total = db.query(func.count(Comparison.id)).filter(
+        Comparison.user_id == current_user.id
+    ).scalar() or 0
+ 
+    domains = set()
+    for c in completed:
+        domains.add(_domain(c.target_url))
+        for u in (c.competitor_urls or []):
+            domains.add(_domain(u))
+ 
+    gaps = [c.score_gap for c in completed if c.score_gap is not None]
+    avg_gap = round(sum(gaps) / len(gaps), 1) if gaps else None
+ 
+    strongest = max(completed, key=lambda c: c.score_gap if c.score_gap is not None else -999, default=None)
+    biggest_gap = min(completed, key=lambda c: c.score_gap if c.score_gap is not None else 999, default=None)
+ 
+    def snapshot(c: Optional[Comparison]):
+        if not c or c.score_gap is None:
+            return None
+        return {
+            "job_id": c.job_id,
+            "client_name": c.client_name,
+            "target_domain": _domain(c.target_url),
+            "competitor_domain": _domain(c.best_competitor_url) if c.best_competitor_url else None,
+            "target_score": c.target_score,
+            "competitor_score": c.best_competitor_score,
+            "gap": c.score_gap,
+        }
+ 
+    return {
+        "total_comparisons": total,
+        "domains_analyzed": len(domains),
+        "avg_score_gap": avg_gap,
+        "strongest_win": snapshot(strongest) if (strongest and strongest.score_gap and strongest.score_gap > 0) else None,
+        "biggest_gap": snapshot(biggest_gap) if (biggest_gap and biggest_gap.score_gap and biggest_gap.score_gap < 0) else None,
+    }
+ 
+ 
+# ── LIST ────────────────────────────────────────────────────────────────────────
+ 
+@app.get("/api/comparisons")
+async def list_comparisons(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Comparison).filter(Comparison.user_id == current_user.id)
+    if status_filter:
+        q = q.filter(Comparison.status == status_filter)
+    q = q.order_by(desc(Comparison.created_at))
+ 
+    total = q.count()
+    rows: List[Comparison] = q.offset((page - 1) * page_size).limit(page_size).all()
+ 
+    def card(c: Comparison) -> dict:
+        return {
+            "job_id": c.job_id,
+            "client_name": c.client_name,
+            "target_url": c.target_url,
+            "target_domain": _domain(c.target_url),
+            "competitor_urls": c.competitor_urls,
+            "competitor_domains": [_domain(u) for u in (c.competitor_urls or [])],
+            "status": c.status,
+            "progress": c.progress,
+            "target_score": c.target_score,
+            "best_competitor_score": c.best_competitor_score,
+            "best_competitor_url": c.best_competitor_url,
+            "best_competitor_domain": _domain(c.best_competitor_url) if c.best_competitor_url else None,
+            "avg_competitor_score": c.avg_competitor_score,
+            "score_gap": c.score_gap,
+            "created_at": c.created_at,
+            "completed_at": c.completed_at,
+        }
+ 
+    return {
+        "comparisons": [card(c) for c in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }
+ 
+ 
+# ── SINGLE STATUS ────────────────────────────────────────────────────────────────
+ 
+@app.get("/api/comparisons/{job_id}")
+async def get_comparison(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Comparison).filter(
+        Comparison.job_id == job_id,
+        Comparison.user_id == current_user.id,
+    ).first()
+    if not c:
+        raise HTTPException(404, "Comparison not found")
+ 
+    return {
+        "job_id": c.job_id,
+        "name": c.name,
+        "target_url": c.target_url,
+        "competitor_urls": c.competitor_urls,
+        "status": c.status,
+        "progress": c.progress,
+        "results": c.results,
+        "error": c.error,
+        "created_at": c.created_at,
+        "completed_at": c.completed_at,
+    }
+ 
+ 
+# ── REFRESH ──────────────────────────────────────────────────────────────────────
+ 
+@app.post("/api/comparisons/{job_id}/refresh")
+async def refresh_comparison(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Comparison).filter(
+        Comparison.job_id == job_id,
+        Comparison.user_id == current_user.id,
+    ).first()
+    if not c:
+        raise HTTPException(404, "Comparison not found")
+ 
+    if not check_and_consume_credits(current_user, db, 2):
+        raise HTTPException(402, "Insufficient credits")
+ 
+    c.status = "pending"
+    c.progress = 0
+    db.commit()
+    background_tasks.add_task(run_comparison_task, job_id)
+    return {"message": "Refresh started"}
+ 
+ 
+# ── DELETE ───────────────────────────────────────────────────────────────────────
+ 
+@app.delete("/api/comparisons/{job_id}", status_code=204)
+async def delete_comparison(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Comparison).filter(
+        Comparison.job_id == job_id,
+        Comparison.user_id == current_user.id,
+    ).first()
+    if not c:
+        raise HTTPException(404, "Comparison not found")
+    db.delete(c)
+    db.commit()
+
+
+# async def create_compare(
+#     request: ComparisonRequest,
+#     background_tasks: BackgroundTasks,
+#     current_user: User = Depends(get_current_user),
+#     db: Session = Depends(get_db)
+# ):
+#     """Start deep comparison (requires 2 credits)"""
+
+#     print(request)
+#     print(current_user)
+#     print("Checking credits...")
+
+#     if not check_and_consume_credits(current_user, db, credits_needed=2):
+#         raise HTTPException(status_code=402, detail="Insufficient credits")
+
+#     target_url = str(request.target_url)
+#     competitor_urls = [str(url) for url in request.competitor_urls[:3]]  # Max 3 competitors
+#     job_id = str(uuid.uuid4())
+#     compare = Comparison(
+#         job_id=job_id,
+#         client_name=str(request.client_name),
+#         user_id=current_user.id,
+#         target_url=target_url,
+#         competitor_urls=competitor_urls,
+#         status="pending"
+#     )
+#     db.add(compare)
+#     db.commit()
+
+#     log_activity(
+#         db,
+#         user_id=current_user.id,
+#         activity_type=ActivityType.COMPARISON,
+#         activity_id=job_id,
+#         target=target_url,
+#         status="pending"
+#     )
+    
+#     create_notification(
+#     db=db,
+#     user_id=current_user.id,
+#     type="compare",
+#     title="Comparison started",
+#     message=f"Your Comparison for {target_url} has been queued (job {job_id[:4]}).",
+#     metadata={"job_id": job_id, "url": str(target_url)}
+# )
+
+#     # TODO: Add background task
+#     background_tasks.add_task(run_comparison_task, job_id, target_url, competitor_urls, current_user.id, db)
+
+#     return AuditResponse(job_id=job_id, status="pending", message="Comparison started")
+
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scheduler (call this from a cron job or APScheduler)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# async def run_scheduled_rank_checks(db: Session):
+#     """Run all scheduled rank checks that are due"""
+    
+#     now = datetime.utcnow()
+    
+#     # Find all trackings due for check
+#     due_trackings = db.query(RankTracking).filter(
+#         and_(
+#             RankTracking.is_scheduled == True,
+#             RankTracking.next_check <= now,
+#             RankTracking.status != "running"
+#         )
+#     ).all()
+    
+#     print(f"Found {len(due_trackings)} rank trackings due for check")
+    
+#     for tracking in due_trackings:
+#         try:
+#             # Check if user has credits
+#             user = db.query(User).filter(User.id == tracking.user_id).first()
+#             if not user or user.credits_remaining < 1:
+#                 continue
+            
+#             # Run tracking
+#             await run_rank_tracking_task(tracking.job_id, tracking.user_id, db)
+            
+#         except Exception as e:
+#             print(f"Error running scheduled tracking {tracking.job_id}: {e}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BILLING ENDPOINTS (Whop Payment Integration)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/billing/checkout-link", response_model=CheckoutLinkResponse)
+async def create_checkout_link_endpoint(
+    request: CheckoutLinkRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Start deep comparison (requires 2 credits)"""
-
-    print(request)
-    print(current_user)
-    print("Checking credits...")
-
-    if not check_and_consume_credits(current_user, db, credits_needed=2):
-        raise HTTPException(status_code=402, detail="Insufficient credits")
-
-    target_url = str(request.target_url)
-    competitor_urls = [str(url) for url in request.competitor_urls[:3]]  # Max 3 competitors
-    job_id = str(uuid.uuid4())
-    compare = Comparison(
-        job_id=job_id,
-        client_name=str(request.client_name),
+    """
+    Create a Whop checkout link for plan upgrade
+    
+    Request body:
+    - plan_tier: "pro" or "agency"
+    
+    Returns checkout URL for user to complete payment
+    """
+    
+    plan_info = whop_service.get_plan_info(request.plan_tier)
+    if not plan_info:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid plan tier: {request.plan_tier}"
+        )
+    
+    # Check if user already has an active subscription at this tier
+    if current_user.plan == request.plan_tier and current_user.subscription_status == "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"You already have an active {request.plan_tier} subscription"
+        )
+    
+    checkout_url = await whop_service.create_checkout_link(
         user_id=current_user.id,
-        target_url=target_url,
-        competitor_urls=competitor_urls,
-        status="pending"
+        plan_tier=request.plan_tier,
+        db=db
     )
-    db.add(compare)
-    db.commit()
-
-    log_activity(
-        db,
-        user_id=current_user.id,
-        activity_type=ActivityType.COMPARISON,
-        activity_id=job_id,
-        target=target_url,
-        status="pending"
+    
+    if not checkout_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create checkout link. Please try again."
+        )
+    
+    logger.info(f"Created checkout link for user {current_user.id}, plan {request.plan_tier}")
+    
+    return CheckoutLinkResponse(
+        checkout_url=checkout_url,
+        plan_tier=request.plan_tier
     )
 
-    # TODO: Add background task
-    background_tasks.add_task(run_comparison_task, job_id, target_url, competitor_urls, current_user.id, db)
 
-    return AuditResponse(job_id=job_id, status="pending", message="Comparison started")
+@app.get("/api/billing/subscription", response_model=SubscriptionStatus)
+async def get_subscription_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user's subscription status"""
+    
+    return SubscriptionStatus(
+        plan=current_user.plan,
+        subscription_status=current_user.subscription_status or "inactive",
+        subscription_started_at=current_user.subscription_started_at,
+        subscription_renews_at=current_user.subscription_renews_at,
+        credits_remaining=current_user.credits_remaining,
+        whop_subscription_id=current_user.whop_subscription_id
+    )
+
+
+@app.post("/api/billing/cancel-subscription", response_model=CancelSubscriptionResponse)
+async def cancel_subscription_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cancel user's active subscription"""
+    
+    if not current_user.whop_subscription_id or current_user.subscription_status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active subscription to cancel"
+        )
+    
+    success = await whop_service.cancel_subscription(current_user.id, db)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to cancel subscription. Please try again."
+        )
+    
+    logger.info(f"Cancelled subscription for user {current_user.id}")
+    
+    return CancelSubscriptionResponse(
+        success=True,
+        message="Subscription cancelled successfully"
+    )
+
+
+@app.get("/api/billing/plans", response_model=PlansResponse)
+async def get_plans():
+    """Get all available plans and pricing"""
+    
+    plans_data = {}
+    for tier, config in whop_service.get_all_plans().items():
+        plans_data[tier] = PlanInfo(
+            name=config["name"],
+            price=config["price"],
+            credits=config["credits"]
+        )
+    
+    return PlansResponse(plans=plans_data)
+
+
+@app.post("/api/billing/webhook")
+async def whop_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Webhook endpoint for Whop payment events
+    
+    Events handled:
+    - order.completed: Payment successful
+    - order.failed: Payment failed
+    - subscription.cancelled: Subscription cancelled
+    """
+    from whop_sdk import Whop   
+    
+
+
+    # webhook_key must be base64-encoded — the SDK passes it
+    # straight to the Standard Webhooks verifier, which expects b64.
+    whopsdk = Whop(
+        api_key=os.environ["WHOP_API_KEY"],
+        webhook_key=base64.b64encode(os.environ["WHOP_WEBHOOK_SECRET"].encode()).decode(),
+    )
+    print("Webhook received")
+    # Get raw body for signature verification
+    
+    
+
+    # Verify webhook signature
+    # if not whop_service.verify_webhook_signature(body, signature):
+    #     logger.warning("Invalid webhook signature")
+    #     raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    try:
+        payload = await request.json()
+        # print(payload)
+        # Unwrap + verify signature in one call. Raises on invalid signatures.
+        body = (await request.body()).decode()
+        event = whopsdk.webhooks.unwrap(body, headers=dict(request.headers))
+        data = event.data
+        print("webhook: ",event.type, data)
+        
+        logger.info(f"Received Whop webhook: {event}")
+        # checkout_config = whopsdk.checkout_configurations.retrieve(data.checkout_configuration.id)
+        checkout_config = whopsdk.checkout_configurations.retrieve("ch_LWf3OIdrIMw2pZM")
+        # checkout_config = whopsdk.checkout_configurations.retrieve("ch_pxBxsChgCIuqy1F")
+        print(checkout_config)
+        if event.type == "payment.succeeded":
+            # Payment successful
+            subscription_id = data.membership.id
+            product_id = data.product.id
+            customer_email = checkout_config.metadata.get('user_email', data.user.email)
+            metadata = data.metadata
+
+            trial = checkout_config.plan.trial_period_days if checkout_config.plan.trial_period_days else 0
+            print(trial)
+
+            print(subscription_id, product_id, customer_email, metadata)
+            
+            success = await whop_service.handle_payment_success(
+                subscription_id=subscription_id,
+                product_id=product_id,
+                customer_email=customer_email,
+                metadata=metadata,
+                trial = trial,
+                db=db
+            )
+            
+            if success:
+                return {"status": "success", "message": "Payment processed"}
+            else:
+                logger.error("Failed to process payment")
+                return {"status": "error", "message": "Failed to process payment"}, 500
+                
+        elif event.type == "order.failed":
+            # Payment failed
+            customer_email = data.get("customer_email")
+            reason = data.get("failure_reason", "Unknown")
+            
+            await whop_service.handle_payment_failed(
+                customer_email=customer_email,
+                reason=reason,
+                db=db
+            )
+            
+            return {"status": "success", "message": "Failure recorded"}
+            
+        elif event.type == "subscription.cancelled":
+            # Subscription cancelled
+            subscription_id = data.get("subscription_id")
+            customer_email = data.get("customer_email")
+            
+            user = db.query(User).filter(User.email == customer_email).first()
+            if user and user.whop_subscription_id == subscription_id:
+                user.subscription_status = "cancelled"
+                user.updated_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"Subscription cancelled for user {user.id}")
+            
+            return {"status": "success", "message": "Cancellation recorded"}
+        
+        else:
+            logger.info(f"Unhandled webhook event: {event}")
+            return {"status": "success", "message": "Event received"}
+            
+    except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error processing webhook")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TRIAL MANAGEMENT ENDPOINTS
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/billing/start-trial", response_model=StartTrialResponse)
+async def start_trial_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Start 14-day free Pro plan trial
+    - User can only use trial once per account
+    - Trial grants 10,000 credits
+    - After 14 days, user reverts to Free plan (20 credits)
+    """
+    
+    success, message, trial_ends_at = await whop_service.start_free_trial(
+        current_user.id, db
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    
+    logger.info(f"Trial started for user {current_user.id}")
+    
+    create_notification(
+    db=db,
+    user_id=current_user.id,
+    type="trial-started",
+    title="Your Free trial has been activated !",
+    metadata={}
+    )
+    
+    return StartTrialResponse(
+        success=True,
+        message=message,
+        trial_ends_at=trial_ends_at,
+        credits_granted=10000
+    )
+
+
+@app.get("/api/billing/trial-status", response_model=TrialStatus)
+async def get_trial_status_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user's trial status"""
+    
+    trial_status = whop_service.get_trial_status(current_user)
+    
+    return TrialStatus(
+        trial_active=trial_status["trial_active"],
+        trial_started_at=trial_status["trial_started_at"],
+        trial_ends_at=trial_status["trial_ends_at"],
+        trial_used=trial_status["trial_used"],
+        days_remaining=trial_status["days_remaining"],
+        plan=trial_status["plan"],
+        credits_remaining=trial_status["credits_remaining"]
+    )
+
+
+@app.get("/api/billing/trial-upgrade-offer", response_model=TrialUpgradeOffer)
+async def get_trial_upgrade_offer_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get upgrade offer after trial expires
+    Users who expired trial get 30% discount if they upgrade within 3 days
+    """
+    
+    offer = whop_service.get_trial_upgrade_offer(current_user)
+    
+    return TrialUpgradeOffer(
+        trial_expired=offer["trial_expired"],
+        offer_active=offer["offer_active"],
+        discount_percent=offer["discount_percent"],
+        offer_expires_at=offer["offer_expires_at"],
+        plan_tier=offer["plan_tier"],
+        discounted_price=offer["discounted_price"],
+        original_price=offer["original_price"]
+    )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Activity history endpoint
@@ -588,6 +1298,33 @@ async def get_activity_stats_endpoint(
     
     stats = get_activity_stats(db, current_user.id, days=days, current_month=current_month)
     return stats
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Notifications endpoint
+# ──────────────────────────────────────────────────────────────────────────────
+@app.get("/api/notifications")
+async def list_notifications(
+    page: int = 1, page_size: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Notification).filter(Notification.user_id == current_user.id).order_by(Notification.created_at.desc())
+    total = query.count()
+    items = query.offset((page-1)*page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [NotificationItem.model_validate(n) for n in items]
+    }
+
+@app.post("/api/notifications/{notification_id}/mark-read")
+async def mark_read(notification_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    n = mark_notification_read(db, notification_id, current_user.id)
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True, "notification": NotificationItem.model_validate(n)}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # VISITOR TRACKING ENDPOINTS (For conversion analysis)
@@ -738,6 +1475,234 @@ async def mark_visitor_as_converted(
         "converted": True,
         "user_id": current_user.id
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Site Data
+# ──────────────────────────────────────────────────────────────────────────────
+
+def generate_recommendations_from_crawl(crawl_results) -> List[SiteRecommendation]:
+    """
+    Generate a list of `SiteRecommendation` items based on crawl `results`.
+    This inspects the `issues` section of crawl results and creates a
+    short, prioritized recommendation for each issue category detected.
+    """
+    recs: List[SiteRecommendation] = []
+    if not crawl_results:
+        return recs
+
+    issues = crawl_results.get("issues") if isinstance(crawl_results, dict) else None
+    if not issues:
+        return recs
+
+    for category, value in issues.items():
+        # Determine a sensible count for the category
+        count = 0
+        examples = None
+        if isinstance(value, dict):
+            # Try common keys that contain lists of problematic URLs/items
+            for k in ("items", "pages", "urls", "examples", "instances"):
+                if k in value and isinstance(value[k], list):
+                    count = len(value[k])
+                    examples = value[k][:3]
+                    break
+            if count == 0:
+                # Fall back to top-level keys count
+                count = len(value)
+        elif isinstance(value, list):
+            count = len(value)
+            examples = value[:3]
+        else:
+            # Unknown shape — skip
+            continue
+
+        if count == 0:
+            continue
+
+        title = category.replace("_", " ").title()
+        description = f"Found {count} {category.replace('_',' ')} issues."
+        # if examples:
+        #     # Keep examples short and human-friendly
+        #     try:
+        #         ex_str = ", ".join([str(x) for x in examples])
+        #         description += f" Examples: {ex_str}"
+        #     except Exception:
+        #         pass
+
+        priority = "high" if count > 50 else "medium" if count > 10 else "low"
+
+        recs.append(
+            SiteRecommendation(
+                title=title,
+                description=description,
+                priority=priority
+            )
+        )
+
+    return recs
+
+
+@app.get("/api/sites/{site_url}/data", response_model=SiteDataResponse)
+async def get_site_data(
+    site_url: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get comprehensive site data overview including:
+    - Latest health scores (SEO, Core Web Vitals, performance, etc)
+    - Latest recommendations/opportunities
+    - Latest comparison report summary
+    - Latest keyword rankings (mock data)
+    
+    Query params:
+    - site_url: The website URL to get data for (e.g., "example.com")
+    """
+    
+    # Normalize URL
+    normalized_url = site_url.lower().strip()
+    if not normalized_url.startswith(('http://', 'https://')):
+        normalized_url = f"https://{normalized_url}"
+    
+    # Get latest audit for this site
+    latest_audit = db.query(Audit).filter(
+        Audit.user_id == current_user.id,
+        Audit.url.ilike(f"%{site_url}%")
+    ).order_by(Audit.created_at.desc()).first()
+    
+    if not latest_audit or not latest_audit.results:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No audit found for {site_url}"
+        )
+    
+    audit_results = latest_audit.results
+    
+    # Extract health scores
+    health_overview = SiteHealthOverview(
+        overall_score=audit_results.get("overall_score", 0),
+        seo_score=audit_results.get("lighthouse", {}).get("categories", {}).get("seo", {}).get("score", 0),
+        performance_score=audit_results.get("lighthouse", {}).get("categories", {}).get("performance", {}).get("score", 0),
+        accessibility_score=audit_results.get("lighthouse", {}).get("categories", {}).get("accessibility", {}).get("score", 0),
+        best_practices_score=audit_results.get("lighthouse", {}).get("categories", {}).get("best_practices", {}).get("score", 0),
+        pwa_score=audit_results.get("lighthouse", {}).get("categories", {}).get("pwa", {}).get("score", 0),
+        core_web_vitals=audit_results.get("lighthouse", {}).get("metrics", {}).get("coreWebVitals", {}),
+        broken_links_count=audit_results.get("broken_links", {}).get("broken_count", 0),
+        technical_seo=audit_results.get("technical_seo", {}),
+        security={
+            "https": audit_results.get("security", {}).get("https", False),
+            "security_headers": audit_results.get("security", {}).get("security_headers", {})
+        },
+        content_quality={
+            "score": audit_results.get("content_quality", {}).get("score", 0),
+            "word_count": audit_results.get("content_quality", {}).get("word_count", 0),
+            "reading_ease": audit_results.get("content_quality", {}).get("reading_ease_score", 0)
+        }
+    )
+    
+    # Extract recommendations and opportunities
+    opportunities = audit_results.get("lighthouse", {}).get("opportunities", [])
+    recommendations = []
+
+    # Get latest crawl for this site
+    latest_crawl = db.query(Crawl).filter(
+        Crawl.user_id == current_user.id,
+        Crawl.url.ilike(f"%{site_url}%")
+    ).order_by(Crawl.created_at.desc()).first()
+
+    crawl_summary = None
+    if latest_crawl:
+        crawl_summary = CrawlSummary(
+            job_id=latest_crawl.job_id,
+            pages_crawled=latest_crawl.pages_crawled,
+            issues_found=latest_crawl.issues_found,
+            completed_at=latest_crawl.completed_at,
+            results_summary=(latest_crawl.results.get("summary") if latest_crawl.results else None),
+            issues = (latest_crawl.results.get('issues') if latest_crawl.results else None)
+        )    
+        # Merge crawl-based recommendations
+        try:
+            crawl_recs = generate_recommendations_from_crawl(latest_crawl.results or {})
+            if crawl_recs:
+                # Append up to 5 crawl recommendations
+                recommendations.extend(crawl_recs[:5])
+        except Exception as e:
+            logger.warning(f"Failed to generate crawl recommendations: {e}")
+    
+    for opp in opportunities[:5]:  # Top 5 opportunities
+        recommendations.append(
+            SiteRecommendation(
+                title=opp.get("title", ""),
+                description=opp.get("description", ""),
+                savings_ms=round(opp.get("savings", {}).get("ms", 0)),
+                priority="high" if opp.get("savings", {}).get("ms", 0) > 1000 else "medium"
+            )
+        )
+    
+    # Add content quality recommendations
+    content_recs = audit_results.get("content_quality", {}).get("recommendations", [])
+    for rec in content_recs[:3]:
+        recommendations.append(
+            SiteRecommendation(
+                title="Content Quality",
+                description=rec,
+                priority="medium"
+            )
+        )
+    
+    
+    # Get latest comparison report
+    latest_comparison = db.query(Comparison).filter(
+        Comparison.user_id == current_user.id,
+        Comparison.target_url.ilike(f"%{site_url}%")
+    ).order_by(Comparison.created_at.desc()).first()
+    
+    comparison_summary = None
+    if latest_comparison and latest_comparison.results:
+        comp_results = latest_comparison.results
+        print(comp_results.get('overall_scores'))
+        comparison_summary = ComparisonSummary(
+            vs_competitors= comp_results.get('overall_scores').get('competitors', []),
+            overall_scores = comp_results.get('overall_scores',{}),
+            your_position="leader" if audit_results.get("overall_score", 0) >= 80 else "competitive" if audit_results.get("overall_score", 0) >= 60 else "needs_improvement",
+            your_score=audit_results.get("overall_score", 0),
+            average_competitor_score=comp_results.get("average_score", 0),
+            key_advantages=comp_results.get("advantages", [])[:3],
+            key_disadvantages=comp_results.get("disadvantages", [])[:3],
+            comparison_date=latest_comparison.created_at.isoformat()
+        )
+    
+    
+    keywords  = db.query(TrackedKeyword).filter(
+        TrackedKeyword.user_id == current_user.id,
+        TrackedKeyword.is_active == True,
+        TrackedKeyword.domain.ilike(f"%{site_url}%")).order_by(TrackedKeyword.created_at.desc()).all()
+
+    keyword_rankings = [
+        KeywordRanking(
+            keyword = k.keyword,
+            current_rank = k.current_position,
+            previous_rank= k.previous_position,
+            search_volume=4800,
+            difficulty=62,
+            trend="up" if k.position_change >= 0 else "down"
+        ) for k in keywords
+    ]
+    
+    logger.info(f"Fetched site data for {site_url} - User {current_user.id}")
+    
+    return SiteDataResponse(
+        site_url=normalized_url,
+        last_audit_date=latest_audit.created_at.isoformat(),
+        health_overview=health_overview,
+        recommendations=recommendations,
+        comparison_summary=comparison_summary,
+        top_keywords=keyword_rankings[:10],
+        latest_crawl=crawl_summary
+    )
+
+
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import json
 from aiohttp_socks import SocksConnector
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus, urlparse
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta
 import random
 import os
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -23,6 +25,7 @@ USER_AGENTS = [
 # Shadowsocks SOCKS5 proxy configuration
 SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "socks5://127.0.0.1:1080")
 USE_SOCKS5 = os.getenv("USE_SOCKS5", "true").lower() == "true"
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
 
 # Fallback HTTP proxies (optional)
 HTTP_PROXY_LIST = os.getenv("HTTP_PROXY_LIST", "").split(",") if os.getenv("HTTP_PROXY_LIST") else []
@@ -54,7 +57,7 @@ class SearchEngine:
     
     def __init__(self, name: str):
         self.name = name
-        self.results_per_page = 10
+        self.results_per_page = 20
     
     def get_search_url(self, keyword: str, page: int = 0) -> str:
         raise NotImplementedError
@@ -73,6 +76,54 @@ class SearchEngine:
             'Upgrade-Insecure-Requests': '1',
             'Referer': 'https://www.google.com/',
         }
+
+    def get_headers(self) -> Dict[str, str]:
+        return self._get_random_headers()
+
+
+class BraveSearchAPI(SearchEngine):
+    def __init__(self):
+        super().__init__("brave")
+        self.base_url = "https://api.search.brave.com/res/v1/web/search"
+
+    def get_search_url(self, keyword: str, page: int = 0) -> str:
+        offset = page
+        print("offset:", offset)
+        return f"{self.base_url}?q={quote_plus(keyword)}&offset={offset}&count={self.results_per_page}"
+
+    def parse_results(self, html: str) -> List[Dict[str, Any]]:
+        results = []
+        try:
+            # data = json.loads(html)
+            data = html
+            # print(type(data))
+        except json.JSONDecodeError:
+            print("error decoding")
+            return results
+
+        for index, item in enumerate(data.get('results', []), start=1):
+            url = item.get('url') or item.get('link') or item.get('display_url')
+            print(url)
+            title = item.get('title') or item.get('headline') or ""
+            if not url:
+                continue
+            results.append({
+                'position': index,
+                'url': url,
+                'title': title,
+                'domain': urlparse(url).netloc
+            })
+        return results
+
+    def get_headers(self) -> Dict[str, str]:
+        headers = self._get_random_headers()
+        headers.update({
+            'Accept': 'application/json',
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token" : BRAVE_SEARCH_API_KEY
+            # 'x-api-key': BRAVE_SEARCH_API_KEY
+        })
+        return headers
 
 
 class GoogleScraper(SearchEngine):
@@ -158,13 +209,19 @@ class RateLimiter:
 class RankTracker:
     def __init__(self, domain: str, use_socks5: bool = USE_SOCKS5):
         self.domain = domain
-        self.engines = {'google': GoogleScraper(), 'bing': BingScraper()}
+        self.engines = {
+            'brave': BraveSearchAPI(),
+            'google': GoogleScraper(),
+            'bing': BingScraper()
+        }
         self.max_retries = 3
-        self.use_socks5 = use_socks5
+        self.use_socks5 = False
         self.proxy_rotator = ProxyRotator(SOCKS5_PROXY, HTTP_PROXY_LIST)
         self.rate_limiter = RateLimiter(requests_per_second=0.33)  # ~3 sec between requests
     
-    async def check_rankings(self, keywords: List[str], engines: List[str] = ['google'], progress_callback=None):
+    async def check_rankings(self, keywords: List[str], engines: Optional[List[str]] = None, progress_callback=None):
+        if engines is None:
+            engines = list(self.engines.keys())
         results = {}
         total = len(keywords) * len(engines)
         completed = 0
@@ -217,9 +274,22 @@ class RankTracker:
                 await self.rate_limiter.wait()
                 
                 url = engine.get_search_url(keyword, page)
-                headers = engine._get_random_headers()
+                headers = engine.get_headers()
                 
                 print(f"[FETCH] {engine.name.upper()} - {keyword} (page {page + 1}, attempt {attempt + 1})")
+
+                if engine.name == "brave":
+                    # url = "https://api.search.brave.com/res/v1/web/search"
+
+                    # params = {
+                    #     "q": keyword,
+                    # }
+
+                    response = requests.get(url, headers=headers)
+                    html = response.json()
+                    # print(html.get('web'))
+
+                    return html.get('web',{})
                 
                 # Use SOCKS5 connector if enabled
                 if self.use_socks5:
@@ -250,6 +320,7 @@ class RankTracker:
                 
                 # Fallback: HTTP proxy without SOCKS5
                 else:
+                    print()
                     http_proxy = self.proxy_rotator.get_next_proxy()
                     timeout = aiohttp.ClientTimeout(total=30)
                     
@@ -286,6 +357,7 @@ class RankTracker:
         found = 0
         positions = []
         
+        print("results summary: ",results)
         for kw, engines in results.items():
             for eng, data in engines.items():
                 if data.get('found'):
@@ -303,7 +375,7 @@ class RankTracker:
         }
 
 
-async def track_rankings(domain: str, keywords: List[str], engines: List[str] = ['google'], progress_callback=None):
+async def track_rankings(domain: str, keywords: List[str], engines: Optional[List[str]] = None, progress_callback=None):
     tracker = RankTracker(domain)
     return await tracker.check_rankings(keywords, engines, progress_callback)
 
@@ -315,9 +387,9 @@ if __name__ == '__main__':
     # Test with your domain
     results = loop.run_until_complete(
         track_rankings(
-            'nike.com',
-            ['nike shoes', 'running shoes', 'nike sportswear'],
-            engines=['google', 'bing']
+            'reddit.com',
+            ['importance of reviews for a product'],
+            engines=['brave']
         )
     )
     

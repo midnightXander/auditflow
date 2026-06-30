@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Website Audit Report - {{ agency_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-body: #0f172a;
+      --bg-page: #ffffff;
+      --primary: #6366f1;
+      --primary-dark: #4338ca;
+      --secondary: #0ea5e9;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --score-good: #10b981;
+      --score-avg: #f59e0b;
+      --score-poor: #ef4444;
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: white;
+      font-family: var(--font-body);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+      padding: 0; margin: 0;
+    }
+    .page {
+      width: 210mm;
+      height: 297mm;
+      background: var(--bg-page);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      page-break-after: always;
+    }
+    .page-content {
+      flex: 1;
+      padding: 20mm;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+    @media print {
+      body { background-color: transparent; padding: 0; gap: 0; }
+      .page { box-shadow: none; margin: 0; }
+      .cover-page { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    h1, h2, h3, h4, h5 { font-family: var(--font-display); line-height: 1.2; }
+
+    /* Cover Page */
+    .cover-page {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      color: white;
+      justify-content: space-between;
+    }
+    .cover-bg-decor {
+      position: absolute; top: -10%; right: -10%;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(99,102,241,0.2) 0%, rgba(99,102,241,0) 70%);
+      border-radius: 50%; z-index: 1;
+    }
+    .cover-bg-decor-2 {
+      position: absolute; bottom: -10%; left: -10%;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(14,165,233,0.15) 0%, rgba(14,165,233,0) 70%);
+      border-radius: 50%; z-index: 1;
+    }
+    .brand-header {
+      display: flex; align-items: center; gap: 12px;
+      font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .brand-logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: bold; color: white;
+    }
+    .cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+    .cover-title {
+      font-size: 64px; font-weight: 800; margin-bottom: 24px;
+      background: linear-gradient(to right, #ffffff, #cbd5e1);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .cover-client { font-size: 24px; color: #94a3b8; margin-bottom: 48px; font-weight: 300; }
+    .cover-meta { display: flex; flex-direction: column; gap: 12px; font-size: 16px; color: #cbd5e1; }
+    .cover-meta-item { display: flex; align-items: center; gap: 12px; }
+    .cover-meta-item span { font-weight: 600; color: white; }
+
+    /* Score Circle */
+    .score-circle {
+      position: relative; width: 120px; height: 120px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display); font-size: 36px; font-weight: 700;
+    }
+    .score-circle.good { color: var(--score-good); background: rgba(16,185,129,0.1); border: 4px solid var(--score-good); }
+    .score-circle.avg { color: var(--score-avg); background: rgba(245,158,11,0.1); border: 4px solid var(--score-avg); }
+    .score-circle.poor { color: var(--score-poor); background: rgba(239,68,68,0.1); border: 4px solid var(--score-poor); }
+
+    /* Page Header/Footer */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 32px;
+      font-family: var(--font-display); color: var(--text-muted);
+      font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    }
+    .page-footer {
+      position: absolute; bottom: 20mm; left: 20mm; right: 20mm;
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--text-muted);
+      border-top: 1px solid var(--border); padding-top: 12px;
+    }
+    .section-title {
+      font-size: 32px; font-weight: 700; color: var(--text-main);
+      margin-bottom: 24px; display: flex; align-items: center; gap: 12px;
+    }
+    .section-title::before {
+      content: ''; display: block; width: 6px; height: 32px;
+      background: var(--primary); border-radius: 3px;
+    }
+
+    /* Grids & Cards */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+    .card {
+      background: #f8fafc; border-radius: 16px; padding: 24px; border: 1px solid var(--border);
+    }
+    .card-title {
+      font-size: 18px; font-weight: 600; margin-bottom: 16px;
+      color: var(--text-main); font-family: var(--font-display);
+    }
+    .metric-row {
+      display: flex; justify-content: space-between; padding: 12px 0;
+      border-bottom: 1px solid var(--border); font-size: 14px;
+    }
+    .metric-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .metric-label { color: var(--text-muted); font-weight: 500; }
+    .metric-value {
+      font-weight: 600; color: var(--text-main);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .status-badge {
+      padding: 4px 10px; border-radius: 99px; font-size: 12px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .status-badge.pass { background: rgba(16,185,129,0.1); color: var(--score-good); }
+    .status-badge.fail { background: rgba(239,68,68,0.1); color: var(--score-poor); }
+
+    /* Lighthouse Bars */
+    .lh-category { margin-bottom: 16px; }
+    .lh-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+    .lh-bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .lh-bar-fill { height: 100%; border-radius: 4px; }
+
+    /* Recommendations */
+    .recommendation-list { list-style: none; }
+    .recommendation-list li {
+      position: relative; padding-left: 24px; margin-bottom: 12px;
+      font-size: 14px; line-height: 1.5; color: var(--text-muted);
+    }
+    .recommendation-list li::before {
+      content: '\2192'; position: absolute; left: 0; top: 0;
+      color: var(--primary); font-weight: bold;
+    }
+
+    /* Data Table */
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .data-table th, .data-table td {
+      padding: 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px;
+    }
+    .data-table th {
+      font-weight: 600; color: var(--text-muted); text-transform: uppercase; font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  {# ── MACROS ── #}
+  {% macro score_class(score) %}{% if score >= 90 %}good{% elif score >= 50 %}avg{% else %}poor{% endif %}{% endmacro %}
+  {% macro score_color_var(score) %}{% if score >= 90 %}var(--score-good){% elif score >= 50 %}var(--score-avg){% else %}var(--score-poor){% endif %}{% endmacro %}
+  {% macro badge(passed, pass_text="Present", fail_text="Missing") %}
+    {% if passed %}<span class="status-badge pass">{{ pass_text }}</span>{% else %}<span class="status-badge fail">{{ fail_text }}</span>{% endif %}
+  {% endmacro %}
+
+  {# ── PAGE 1: COVER ── #}
+  <div class="page cover-page" id="page-1">
+    <div class="cover-bg-decor"></div>
+    <div class="cover-bg-decor-2"></div>
+    <div class="page-content" style="z-index: 10;">
+      <div class="brand-header">
+        <div class="brand-logo">{{ agency_name[0] | upper }}</div>
+        <span>{{ agency_name }}</span>
+      </div>
+
+      <div class="cover-main">
+        <h1 class="cover-title">Comprehensive<br>Website Audit</h1>
+        <div class="cover-client">Prepared for <strong>{{ client_company or client_name or 'Client' }}</strong></div>
+
+        <div style="display: flex; align-items: center; gap: 48px; margin-top: 24px;">
+          <div class="score-circle {{ score_class(overall_score) }}" style="background: rgba(255,255,255,0.05); border-color: {{ score_color_var(overall_score) }}; color: {{ score_color_var(overall_score) }};">
+            {{ overall_score }}
+          </div>
+          <div>
+            <div style="font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-bottom: 8px;">Overall Health Score</div>
+            <p style="color: #cbd5e1; max-width: 320px; font-size: 14px; line-height: 1.6;">
+              {% if overall_score >= 90 %}Your website is performing excellently across most metrics. Below is a detailed breakdown.
+              {% elif overall_score >= 50 %}Your website shows room for improvement. See the detailed breakdown below.
+              {% else %}Your website needs attention in several key areas. Review the findings below.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cover-meta">
+        <div class="cover-meta-item">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Target URL: <span>{{ target_url }}</span>
+        </div>
+        <div class="cover-meta-item">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          Audit Date: <span>{{ audit_date }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── PAGE 2: PERFORMANCE & CORE WEB VITALS ── #}
+  <div class="page" id="page-2">
+    <div class="page-content">
+      <div class="page-header">
+        <div>{{ agency_name }}</div>
+        <div>Audit Report - {{ target_url_short }}</div>
+      </div>
+
+      <h2 class="section-title">Performance &amp; Core Web Vitals</h2>
+
+      <div class="grid-2" style="margin-bottom: 32px;">
+        <div class="card">
+          <h3 class="card-title">Lighthouse Categories</h3>
+          {% for cat in lighthouse_categories %}
+          <div class="lh-category">
+            <div class="lh-header">
+              <span>{{ cat.title }}</span>
+              <span style="color: {{ score_color_var(cat.score) }}">{{ cat.score }}</span>
+            </div>
+            <div class="lh-bar-bg"><div class="lh-bar-fill" style="width: {{ cat.score }}%; background: {{ score_color_var(cat.score) }}"></div></div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Core Web Vitals</h3>
+          {% for vital in core_web_vitals %}
+          <div class="metric-row">
+            <span class="metric-label">{{ vital.label }}</span>
+            <span class="metric-value">{{ vital.value }}
+              {% if vital.status == 'good' %}<span class="status-badge pass">Good</span>
+              {% elif vital.status == 'avg' %}<span class="status-badge" style="background: rgba(245,158,11,0.1); color: var(--score-avg)">Needs Impr.</span>
+              {% else %}<span class="status-badge fail">Poor</span>{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if optimization_opportunities %}
+      <h3 class="card-title">Top Optimization Opportunities</h3>
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <table class="data-table" style="margin: 0;">
+          <tr style="background: #f1f5f9;">
+            <th>Opportunity</th>
+            <th>Description</th>
+          </tr>
+          {% for opp in optimization_opportunities[:4] %}
+          <tr>
+            <td style="font-weight: 600; color: var(--text-main);">{{ opp.title }}</td>
+            <td style="color: var(--text-muted);">{{ opp.description }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% endif %}
+
+      <div class="page-footer">
+        <div>Page 2</div>
+        <div>{{ audit_date }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── PAGE 3: TECHNICAL SEO & SECURITY ── #}
+  <div class="page" id="page-3">
+    <div class="page-content">
+      <div class="page-header">
+        <div>{{ agency_name }}</div>
+        <div>Audit Report - {{ target_url_short }}</div>
+      </div>
+
+      <h2 class="section-title">Technical SEO &amp; Security</h2>
+
+      <div class="grid-2" style="margin-bottom: 32px;">
+        <div class="card">
+          <h3 class="card-title">Technical Essentials</h3>
+          <div class="metric-row">
+            <span class="metric-label">Title Tag</span>
+            <span class="metric-value">{{ badge(tech_seo.title_present, 'Present (' ~ tech_seo.title_length ~ ' chars)', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Meta Description</span>
+            <span class="metric-value">{{ badge(tech_seo.meta_present, 'Present (' ~ tech_seo.meta_length ~ ' chars)', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Canonical Tag</span>
+            <span class="metric-value">{{ badge(tech_seo.canonical_present, 'Valid', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">robots.txt</span>
+            <span class="metric-value">{{ badge(tech_seo.robots_txt, 'Found', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">sitemap.xml</span>
+            <span class="metric-value">{{ badge(tech_seo.sitemap_xml, 'Found', 'Missing') }}</span>
+          </div>
+          {% if broken_links_count is defined %}
+          <div class="metric-row">
+            <span class="metric-label">Broken Links Summary</span>
+            <span class="metric-value">{{ broken_links_count }} / {{ total_links_checked }}
+              {% if broken_links_count > 0 %}<span class="status-badge fail">Action Req.</span>{% else %}<span class="status-badge pass">All Good</span>{% endif %}
+            </span>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Security Checks</h3>
+          <div class="metric-row">
+            <span class="metric-label">HTTPS Enabled</span>
+            <span class="metric-value">{{ badge(security.https, 'Yes', 'No') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Strict-Transport-Security</span>
+            <span class="metric-value">{{ badge(security.hsts, 'Present', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">X-Content-Type-Options</span>
+            <span class="metric-value">{{ badge(security.xcto, 'Present', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">X-Frame-Options</span>
+            <span class="metric-value">{{ badge(security.xfo, 'Present', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Content-Security-Policy</span>
+            <span class="metric-value">{{ badge(security.csp, 'Present', 'Missing') }}</span>
+          </div>
+        </div>
+      </div>
+
+      {% if broken_links_list %}
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <h3 class="card-title" style="padding: 24px 24px 8px 24px; margin: 0;">Broken Links Found</h3>
+        <table class="data-table" style="margin: 0;">
+          <tr style="background: #f1f5f9;">
+            <th>URL</th>
+            <th>Error</th>
+          </tr>
+          {% for link in broken_links_list[:5] %}
+          <tr>
+            <td style="color: var(--primary); font-family: monospace; font-size: 12px; word-break: break-all;">{{ link.url | truncate(60) }}</td>
+            <td style="color: var(--score-poor); font-weight: 600; font-size: 12px;">{{ link.error | truncate(50) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% endif %}
+
+      <div class="page-footer">
+        <div>Page 3</div>
+        <div>{{ audit_date }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── PAGE 4: CONTENT & STRUCTURED DATA ── #}
+  <div class="page" id="page-4">
+    <div class="page-content">
+      <div class="page-header">
+        <div>{{ agency_name }}</div>
+        <div>Audit Report - {{ target_url_short }}</div>
+      </div>
+
+      <h2 class="section-title">Content &amp; Structured Data</h2>
+
+      <div class="grid-2" style="margin-bottom: 32px;">
+        <div class="card">
+          <h3 class="card-title">Content Quality Profile</h3>
+          <div class="metric-row">
+            <span class="metric-label">Word Count</span>
+            <span class="metric-value">{{ "{:,}".format(content.word_count) }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Reading Level</span>
+            <span class="metric-value">{{ content.reading_level }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Reading Ease Score</span>
+            <span class="metric-value">{{ content.reading_ease }}
+              {% if content.reading_ease >= 60 %}<span class="status-badge pass">Good</span>
+              {% elif content.reading_ease >= 30 %}<span class="status-badge" style="background: rgba(245,158,11,0.1); color: var(--score-avg)">Fair</span>
+              {% else %}<span class="status-badge fail">Difficult</span>{% endif %}
+            </span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Content/Code Ratio</span>
+            <span class="metric-value">{{ content.content_to_code_ratio }}%</span>
+          </div>
+          <div class="metric-row" style="flex-direction: column; align-items: flex-start; gap: 12px; border-bottom: none;">
+            <span class="metric-label">Heading Structure</span>
+            <div style="display: flex; gap: 8px;">
+              {% for tag, count in content.headings.items() %}
+              <span class="status-badge{% if tag == 'h1' and count == 1 %} pass{% endif %}" style="{% if not (tag == 'h1' and count == 1) %}background: #f1f5f9; color: #475569;{% endif %}">{{ tag | upper }}: {{ count }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Structured Data &amp; Social</h3>
+          <div class="metric-row">
+            <span class="metric-label">JSON-LD Present</span>
+            <span class="metric-value">{{ badge(structured_data.has_json_ld, 'Yes', 'No') }}</span>
+          </div>
+          {% if structured_data.json_ld_types %}
+          <div class="metric-row">
+            <span class="metric-label">JSON-LD Types</span>
+            <span class="metric-value" style="font-size: 12px; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-weight: 500;">{{ structured_data.json_ld_types | join(', ') }}</span>
+          </div>
+          {% endif %}
+          <div class="metric-row">
+            <span class="metric-label">Open Graph Tags</span>
+            <span class="metric-value">{{ badge(structured_data.has_og, 'Present', 'Missing') }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Twitter Cards</span>
+            <span class="metric-value">{{ badge(structured_data.has_twitter, 'Present', 'Missing') }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title">Content Recommendations</h3>
+          <ul class="recommendation-list">
+            {% for rec in content_recommendations[:4] %}
+            <li>{{ rec }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Image Optimization</h3>
+          <div class="metric-row">
+            <span class="metric-label">Total Images Analyzed</span>
+            <span class="metric-value">{{ images.total }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Missing Alt Attributes</span>
+            <span class="metric-value">{{ images.missing_alt }}
+              {% if images.missing_alt > 0 %}<span class="status-badge fail">Fix</span>{% else %}<span class="status-badge pass">Good</span>{% endif %}
+            </span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Optimization Score</span>
+            <span class="metric-value">{{ images.score }}%
+              {% if images.score >= 80 %}<span class="status-badge pass">Good</span>
+              {% elif images.score >= 50 %}<span class="status-badge" style="background: rgba(245,158,11,0.1); color: var(--score-avg)">Fair</span>
+              {% else %}<span class="status-badge fail">Needs Work</span>{% endif %}
+            </span>
+          </div>
+          {% if image_recommendations %}
+          <ul class="recommendation-list" style="margin-top: 16px;">
+            {% for rec in image_recommendations[:3] %}
+            <li>{{ rec }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="page-footer">
+        <div>Page 4</div>
+        <div>{{ audit_date }}</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

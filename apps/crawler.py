@@ -159,7 +159,29 @@ class SiteCrawler:
     def analyze_site(self) -> Dict:
         """Post-crawl analysis - find all issues"""
         crawl_duration = self.end_time - self.start_time if self.end_time else 0
-        
+        # Gather issue details
+        duplicate_titles = self._find_duplicate_titles()
+        duplicate_content = self._find_duplicate_content()
+        thin_content = self._find_thin_content()
+        orphan_pages = self._find_orphan_pages()
+        broken_pages = self._find_broken_pages()
+        missing_meta = self._find_missing_meta()
+        missing_h1 = self._find_missing_h1()
+        multiple_h1 = self._find_multiple_h1()
+        slow_pages = self._find_slow_pages()
+        large_pages = self._find_large_pages()
+
+        # Compute simple issue instance counts (may double-count pages with multiple issue types)
+        duplicate_titles_count = sum(len(urls) for urls in duplicate_titles.values())
+        duplicate_content_count = sum(d.get('count', 0) for d in duplicate_content)
+        other_issues_count = (
+            len(thin_content) + len(orphan_pages) + len(broken_pages)
+            + len(missing_meta) + len(missing_h1) + len(multiple_h1)
+            + len(slow_pages) + len(large_pages)
+        )
+
+        total_issues_count = duplicate_titles_count + duplicate_content_count + other_issues_count
+
         return {
             "summary": {
                 "start_url": self.start_url,
@@ -174,16 +196,17 @@ class SiteCrawler:
                 "crawl_date": datetime.now().isoformat(),
             },
             "issues": {
-                "duplicate_titles": self._find_duplicate_titles(),
-                "duplicate_content": self._find_duplicate_content(),
-                "thin_content": self._find_thin_content(),
-                "orphan_pages": self._find_orphan_pages(),
-                "broken_pages": self._find_broken_pages(),
-                "missing_meta_description": self._find_missing_meta(),
-                "missing_h1": self._find_missing_h1(),
-                "multiple_h1": self._find_multiple_h1(),
-                "slow_pages": self._find_slow_pages(),
-                "large_pages": self._find_large_pages(),
+                "issues_count": total_issues_count,
+                "duplicate_titles": duplicate_titles,
+                "duplicate_content": duplicate_content,
+                "thin_content": thin_content,
+                "orphan_pages": orphan_pages,
+                "broken_pages": broken_pages,
+                "missing_meta_description": missing_meta,
+                "missing_h1": missing_h1,
+                "multiple_h1": multiple_h1,
+                "slow_pages": slow_pages,
+                "large_pages": large_pages,
             },
             "site_structure": self._build_site_tree(),
             "top_pages": self._get_top_pages(),

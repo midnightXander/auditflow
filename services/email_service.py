@@ -288,6 +288,7 @@ def send_credits_low_email(email: str, credits_remaining: int, user_name: Option
     send_email(email, f"⚠️ Only {credits_remaining} credits remaining", html)
 
 
+
 if __name__ == "__main__":
     # Example usage
     send_verification_email("labcomvids@gmail.com", "123456")
