@@ -47,7 +47,23 @@ def upgrade() -> None:
     op.add_column('audits', sa.Column('is_embedded', sa.Boolean(), nullable=True))
     op.add_column('audits', sa.Column('embed_email', sa.String(length=255), nullable=True))
     # op.drop_constraint(op.f('audits_embed_token_id_fkey'), 'audits', type_='foreignkey')
-    op.drop_column('audits', 'embed_token_id')
+    # op.drop_column('audits', 'embed_token_id')
+    from sqlalchemy import inspect
+
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
+    audit_columns = [c["name"] for c in inspector.get_columns("audits")]
+
+    if "embed_token_id" in audit_columns:
+        # If the FK exists, drop it first.
+        fks = inspector.get_foreign_keys("audits")
+        for fk in fks:
+            if "embed_token_id" in fk["constrained_columns"]:
+                op.drop_constraint(fk["name"], "audits", type_="foreignkey")
+                break
+
+    # op.drop_column("audits", "embed_token_id")
     op.add_column('users', sa.Column('embed_api_key', sa.String(length=255), nullable=True))
     op.add_column('users', sa.Column('embed_enabled', sa.Boolean(), nullable=True))
     op.add_column('users', sa.Column('embed_lead_capture', sa.Boolean(), nullable=True))
