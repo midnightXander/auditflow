@@ -59,7 +59,7 @@ class UserResponse(BaseModel):
     plan: str
     credits_remaining: int
     agency_name: str
-    agency_url: str
+    agency_url: Optional[str]
     agency_logo: Optional[str]
     accent_color: Optional[str]
     created_at: datetime
