@@ -49,6 +49,7 @@ from tasks import run_audit_task, run_crawl_task, run_comparison_task, run_keywo
 from db.admin_routes import router as admin_router
 from routes.embed_router import router as embed_router
 from routes.tracking_routes import router as tracking_router
+from routes.anon_router import router as anon_router
 from services.visitor_tracking import track_visitor, get_visitor_analytics, mark_visitor_converted
 from services import whop_service, email_service
 
@@ -118,6 +119,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(embed_router)
 app.include_router(tracking_router)
+app.include_router(anon_router)
 
 # Initialize database on startup
 @app.on_event("startup")

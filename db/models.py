@@ -145,6 +145,40 @@ class Audit(Base):
     # Relationship
     user = relationship("User", back_populates="audits")
 
+class AnonymousAudit(Base):
+    """
+    A combined audit + crawl run by an unauthenticated visitor.
+    Identified by a session_token stored in the browser.
+    Claimed to a real user on signup and expires after 24 hours if unclaimed.
+    """
+    __tablename__ = "anonymous_audits"
+ 
+    id            = Column(Integer, primary_key=True, index=True)
+    session_token = Column(String(64), unique=True, index=True, nullable=False)
+ 
+    url    = Column(String(500), nullable=False)
+    status = Column(String(20), default="pending")  # pending | running | completed | failed
+    progress   = Column(Integer, default=0)
+    stage      = Column(String(50), default="audit")  # audit | crawl | done
+    stage_label = Column(String(100), default="Starting…")
+ 
+    # Audit results
+    audit_score   = Column(Integer, nullable=True)
+    audit_results = Column(JSON, nullable=True)
+ 
+    # Crawl results (50-page crawl)
+    crawl_results = Column(JSON, nullable=True)
+    pages_crawled = Column(Integer, nullable=True)
+ 
+    # Claimed by a real user on signup
+    claimed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    claimed_at         = Column(DateTime, nullable=True)
+ 
+    error      = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=True)  # created_at + 24h
+
+
 class EmbedLead(Base):
     """Leads captured from embedded widgets"""
     __tablename__ = "embed_leads"
