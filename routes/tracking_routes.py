@@ -43,6 +43,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/rank-tracking", tags=["rank-tracking"])
 
+
+def can_use(user) -> bool:
+    """Return True if user is on pro/agency plan or currently on an active trial."""
+    from datetime import datetime as _dt
+
+    if not user:
+        return False
+
+    if (user.plan or '').lower() in ("pro", "agency"):
+        return True
+
+    if getattr(user, "trial_ends_at", None):
+        try:
+            return user.trial_ends_at > _dt.utcnow()
+        except Exception:
+            return False
+
+    return False
+
 # ──────────────────────────────────────────────────────────────────────────────
 # API Endpoints
 # ──────────────────────────────────────────────────────────────────────────────
@@ -71,8 +90,14 @@ async def create_rank_tracking(
     if len(req.keywords) > 100:
         raise HTTPException(400, "Maximum 100 keywords per campaign")
  
+    # Check plan/trial access
+    if not can_use(current_user):
+        raise HTTPException(status_code=403, detail="Rank tracking requires Pro or Agency plan or an active trial")
+    
     if not check_and_consume_credits(current_user, db, credits_needed=3):
         raise HTTPException(402, f"Insufficient credits ({current_user.credits_remaining} left)")
+
+    
  
     job_id = str(uuid.uuid4())
  

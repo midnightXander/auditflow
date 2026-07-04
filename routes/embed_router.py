@@ -12,13 +12,18 @@ from starlette.concurrency import run_in_threadpool
 
 from db.database import get_db
 from db.models import User, Audit, EmbedLead
-from db.auth import get_current_user
+from db.auth import can_use_feature, get_current_user
 from services.email_service import send_email
 from auditor import WebsiteAuditor
 from services.pdf_generator import PDFReportGenerator
 from tasks import run_audit_task
 
+from rq_app import queue
+from rq import Retry
+
 router = APIRouter(prefix="/api/embed", tags=["embed"])
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Widget Configuration
@@ -635,6 +640,10 @@ async def start_embedded_audit(
     
     if not user:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Check plan/trial access
+    if not can_use_feature(user):
+      raise HTTPException(status_code=403, detail="Embed audits require Pro or Agency plan or an active trial")
     
     # Check if email required
     if user.embed_require_email and not email:
@@ -670,7 +679,8 @@ async def start_embedded_audit(
     db.commit()
     
     # Start audit in background (simplified - use background tasks in production)
-    background_tasks.add_task(run_audit_task, job_id, url, user.id, db)
+    # background_tasks.add_task(run_audit_task, job_id, url, user.id, db)
+    queue.enqueue(run_audit_task, job_id, url, user.id, retry=Retry(max=3, interval=60))
     
     return {
         "job_id": job_id,
@@ -1282,8 +1292,16 @@ async def download_pdf_report(
     audit_url = str(audit.url).replace('https://', '').replace('http://', '').rstrip('/')
     safe_filename = f"SEO_Audit_Report_{audit_url.replace('.', '_').replace('/', '_')}.pdf"
     #report_path = generator.generate_audit_report(job_id, audit.results, lead_info, branding, safe_filename)
-    report_path = await run_in_threadpool(
-        generator.generate_audit_report,
+    
+    # report_path = await run_in_threadpool(
+    #     generator.generate_audit_report,
+    #     job_id,
+    #     audit.results,
+    #     lead_info,
+    #     branding,
+    #     safe_filename
+    # )
+    report_path = await generator.generate_audit_report(
         job_id,
         audit.results,
         lead_info,
@@ -1309,6 +1327,9 @@ async def generate_embed_api_key(
 ):
     """Generate new embed API key for agency"""
     
+    if can_use_feature(current_user) is False:
+        raise HTTPException(status_code=403, detail="Feature not available for your plan")
+
     # Generate unique API key
     api_key = f"af_embed_{uuid.uuid4().hex}"
     

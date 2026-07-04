@@ -40,6 +40,7 @@ class TokenResponse(BaseModel):
     """Token response"""
     access_token: str
     refresh_token: str
+    user_id: Optional[int] = None
     token_type: str = "bearer"
     expires_in: int
 
@@ -65,6 +66,10 @@ class UserResponse(BaseModel):
     created_at: datetime
     credits_reset_date: datetime
     is_admin: bool
+    trial_started_at: Optional[datetime] = None
+    trial_ends_at: Optional[datetime] = None
+    trial_used: bool = False
+    trial_plan: Optional[str] = None
 
     class Config:
         from_attributes = True

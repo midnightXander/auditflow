@@ -17,11 +17,11 @@ from apps.backlinks import analyze_backlinks, find_competitor_gaps
 from apps.rank_tracker import track_rankings
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
-
+import asyncio
 import os
 
 
-async def run_audit_task(job_id: str, url: str, user_id: int, db_session):
+def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
     """Background task for audit (needs separate DB session)"""
     from db.database import SessionLocal
     db = SessionLocal()
@@ -36,7 +36,8 @@ async def run_audit_task(job_id: str, url: str, user_id: int, db_session):
         audit.progress = 30
         db.commit()
         
-        results = await auditor.run_full_audit()
+        # results = await auditor.run_full_audit()
+        results = asyncio.run(auditor.run_full_audit())
         
         audit.status = "completed"
         audit.progress = 100

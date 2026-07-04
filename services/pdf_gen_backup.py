@@ -28,53 +28,9 @@ class PDFReportGenerator:
             loader=FileSystemLoader(str(TEMPLATE_DIR)),
             autoescape=True
         )
+        print(str(TEMPLATE_DIR), TEMPLATE_NAME, "template loader initialized")
 
-    # def generate_audit_report(
-    #     self,
-    #     job_id: str,
-    #     audit_results: Dict[str, Any],
-    #     lead_info: Dict[str, str],
-    #     embed_token_data: Dict[str, str],
-    #     filename: Optional[str] = None
-    # ) -> str:
-    #     """
-    #     Generate PDF audit report using Playwright HTML-to-PDF
-
-    #     Args:
-    #         job_id: Audit job ID
-    #         audit_results: Audit results dict with score, issues, etc
-    #         lead_info: {"first_name", "last_name", "email", "company"}
-    #         embed_token_data: {"agency_name", "primary_color", "logo_url"}
-    #         filename: Custom filename (auto-generated if not provided)
-
-    #     Returns:
-    #         Path to generated PDF
-    #     """
-    #     try:
-    #         filename = filename or f"audit_{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    #         filepath = self.output_dir / filename
-
-    #         # Build template context from audit data
-    #         context = self._build_template_context(
-    #             audit_results, lead_info, embed_token_data, job_id
-    #         )
-
-    #         # Render the Jinja2 template
-    #         template = self.jinja_env.get_template(TEMPLATE_NAME)
-    #         html_content = template.render(**context)
-
-    #         # Convert HTML to PDF via Playwright
-    #         asyncio.run(self._html_to_pdf(html_content, str(filepath)))
-
-    #         logger.info(f"[PDF] Generated report: {filepath}")
-    #         return str(filepath)
-
-    #     except Exception as e:
-    #         logger.error(f"[PDF] Error generating report: {e}")
-    #         raise
-
-    # Change to async def
-    async def generate_audit_report(
+    def generate_audit_report(
         self,
         job_id: str,
         audit_results: Dict[str, Any],
@@ -82,19 +38,34 @@ class PDFReportGenerator:
         embed_token_data: Dict[str, str],
         filename: Optional[str] = None
     ) -> str:
+        """
+        Generate PDF audit report using Playwright HTML-to-PDF
+
+        Args:
+            job_id: Audit job ID
+            audit_results: Audit results dict with score, issues, etc
+            lead_info: {"first_name", "last_name", "email", "company"}
+            embed_token_data: {"agency_name", "primary_color", "logo_url"}
+            filename: Custom filename (auto-generated if not provided)
+
+        Returns:
+            Path to generated PDF
+        """
         try:
             filename = filename or f"audit_{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             filepath = self.output_dir / filename
 
+            # Build template context from audit data
             context = self._build_template_context(
                 audit_results, lead_info, embed_token_data, job_id
             )
 
+            # Render the Jinja2 template
             template = self.jinja_env.get_template(TEMPLATE_NAME)
             html_content = template.render(**context)
 
-            # AWAIT the async method instead of using asyncio.run()
-            await self._html_to_pdf(html_content, str(filepath))
+            # Convert HTML to PDF via Playwright
+            self._html_to_pdf(html_content, str(filepath))
 
             logger.info(f"[PDF] Generated report: {filepath}")
             return str(filepath)
@@ -103,29 +74,29 @@ class PDFReportGenerator:
             logger.error(f"[PDF] Error generating report: {e}")
             raise
 
-    async def _html_to_pdf(self, html_content: str, output_path: str) -> None:
+    def _html_to_pdf(self, html_content: str, output_path: str) -> None:
         """Use Playwright headless Chromium to render HTML to PDF"""
-        from playwright.async_api import async_playwright
+        from playwright.sync_api import sync_playwright
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
 
             # Set the HTML content and wait for fonts to load
-            await page.set_content(html_content, wait_until="networkidle")
+            page.set_content(html_content, wait_until="networkidle")
 
             # Give Google Fonts a moment to fully render
-            await page.wait_for_timeout(1500)
+            page.wait_for_timeout(1500)
 
             # Generate PDF with A4 page size
-            await page.pdf(
+            page.pdf(
                 path=output_path,
                 format="A4",
                 print_background=True,
                 prefer_css_page_size=True,
             )
 
-            await browser.close()
+            browser.close()
 
     def _build_template_context(
         self,
@@ -137,7 +108,7 @@ class PDFReportGenerator:
         """Extract and normalize all audit data into template-friendly context"""
 
         # ── Basic Info ──
-        agency_name = branding.get("agency_name", "AuditFlow")
+        agency_name = branding.get("agency_name", "OUTAUDITS")
         target_url = results.get("url", lead_info.get("website_url", "N/A"))
         target_url_short = target_url.replace("https://", "").replace("http://", "").rstrip("/")
         audit_date = datetime.now().strftime("%B %d, %Y")

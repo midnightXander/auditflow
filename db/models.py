@@ -82,6 +82,13 @@ class User(Base):
     embed_email_placeholder = Column(String(200), default="Enter your email")
     embed_width = Column(String(100), default="100%")
     embed_shadow = Column(Boolean, default=True)
+
+    # Onboarding checklist 
+    ob_audit_done      = Column(Boolean, default=False)  # ran first audit
+    ob_crawl_done      = Column(Boolean, default=False)  # ran first crawl
+    ob_compare_done    = Column(Boolean, default=False)  # ran first comparison
+    ob_tracking_done   = Column(Boolean, default=False)  # set up rank tracking
+    ob_checklist_dismissed = Column(Boolean, default=False)  # user closed it
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

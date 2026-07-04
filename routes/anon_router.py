@@ -28,6 +28,7 @@ class StartAnonAuditRequest(BaseModel):
 
 class ClaimRequest(BaseModel):
     session_token: str
+    user_id: int
 
 
 # ── Background task ─────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ async def get_anon_results(token: str):
 # ── CLAIM on signup ─────────────────────────────────────────────────────────────
 
 @router.post("/claim")
-async def claim_anon_audit(req: ClaimRequest, user_id: int):
+async def claim_anon_audit(req: ClaimRequest):
     """
     Called immediately after the user creates an account.
     Transfers the anonymous results to their permanent account.
@@ -246,7 +247,7 @@ async def claim_anon_audit(req: ClaimRequest, user_id: int):
         if row.audit_results:
             audit = Audit(
                 job_id=str(uuid.uuid4()),
-                user_id=user_id,
+                user_id=req.user_id,
                 url=row.url,
                 status="completed",
                 progress=100,
@@ -260,7 +261,7 @@ async def claim_anon_audit(req: ClaimRequest, user_id: int):
         if row.crawl_results:
             crawl = Crawl(
                 job_id=str(uuid.uuid4()),
-                user_id=user_id,
+                user_id=req.user_id,
                 url=row.url,
                 max_pages=50,
                 status="completed",
@@ -271,7 +272,9 @@ async def claim_anon_audit(req: ClaimRequest, user_id: int):
             )
             db.add(crawl)
 
-        row.claimed_by_user_id = user_id
+        print("claimed")    
+
+        row.claimed_by_user_id = req.user_id
         row.claimed_at = datetime.utcnow()
         db.commit()
 

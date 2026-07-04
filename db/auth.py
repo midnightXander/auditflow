@@ -216,6 +216,24 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     return user
 
 
+def can_use_feature(user) -> bool:
+    """Return True if user is on pro/agency plan or currently on an active trial."""
+    from datetime import datetime as _dt
+
+    if not user:
+        return False
+
+    if (user.plan or '').lower() in ("pro", "agency"):
+        return True
+
+    if getattr(user, "trial_ends_at", None):
+        try:
+            return user.trial_ends_at > _dt.utcnow()
+        except Exception:
+            return False
+
+    return False
+
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI Dependencies
 # ──────────────────────────────────────────────────────────────────────────────
@@ -342,6 +360,7 @@ def check_and_consume_credits(user: User, db: Session, credits_needed: int = 1) 
     
     # Consume credits
     user.credits_remaining -= credits_needed
+    print(f'consumed {credits_needed} credits')
     db.commit()
     
     return True
@@ -454,7 +473,19 @@ def get_activity_stats(
         Activity.created_at >= start_prev_month,
         Activity.created_at < start_current_month
     ).all()
-    
+
+    def _get_change(current, previous):
+        diff = current - previous
+        if previous == 0:
+            if current == 0:
+                diff_percent = 0.0
+            else:
+                # If there were 0 in previous period and >0 now, treat as 100% increase
+                diff_percent = 100.0
+        else:
+            diff_percent = (diff / previous) * 100.0
+
+        return round(diff_percent, 1)
 
     current_total = len(activities)
     previous_total = len(previous_activities)
@@ -473,12 +504,19 @@ def get_activity_stats(
     diff_percent = round(diff_percent, 1)
 
     audits_this_month = db.query(Audit).filter(Audit.user_id == user_id, Audit.created_at >= since).all()
-    average_score_this_month = sum(audit.overall_score for audit in audits_this_month) / len(audits_this_month) if audits_this_month else 0
+    average_score_this_month = sum(audit.overall_score if audit.overall_score is not None else 0 for audit in audits_this_month) / len(audits_this_month) if audits_this_month else 0
 
     audits_previous_month = db.query(Audit).filter(Audit.user_id == user_id, Audit.created_at >= start_prev_month, Audit.created_at < start_current_month).all()
-    average_score_previous_month = sum(audit.overall_score for audit in audits_previous_month) / len(audits_previous_month) if audits_previous_month else 0
+    average_score_previous_month = sum(audit.overall_score if audit.overall_score is not None else 0 for audit in audits_previous_month) / len(audits_previous_month) if audits_previous_month else 0
 
-    percent_change = round(((average_score_this_month - average_score_previous_month) / average_score_previous_month * 100), 2) if average_score_previous_month else 0
+    percent_change = _get_change(average_score_this_month, average_score_previous_month)
+    audits_change = _get_change(len(audits_this_month), len(audits_previous_month))
+
+    audits = {
+        "current": len(audits_this_month),
+        "previous": len(audits_previous_month),
+        "change": audits_change
+    }
 
     average_audit_score = {
         "current": average_score_this_month,
@@ -493,6 +531,7 @@ def get_activity_stats(
         "failed": len([a for a in activities if a.status == "failed"]),
         "percent_diff" : diff_percent,
         "average_audit_score" : average_audit_score,
+        "audits" : audits,
 
         "by_type": {}
     }
@@ -558,3 +597,11 @@ def mark_notification_read(db: Session, notification_id: int, user_id: int):
         db.commit()
         db.refresh(n)
     return n
+
+def mark_all_notifications_read(db: Session, user_id: int):
+    notifs = n = db.query(Notification).filter(Notification.user_id == user_id).all()
+    for n in notifs:
+        n.read = True
+
+    db.commit()
+    return notifs

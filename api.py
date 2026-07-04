@@ -2,6 +2,10 @@
 Authenticated API - Complete FastAPI server with JWT auth, Google OAuth, and database
 """
 from __future__ import annotations
+import asyncio
+
+from rq_app import queue
+from rq import Retry
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +24,7 @@ from db.models import ActivityType, User, Audit, Crawl, Comparison, KeywordAnaly
 # Authentication
 from db.auth import (
     get_current_user, get_current_user_optional, check_and_consume_credits,
-    authenticate_user, create_access_token, create_refresh_token, get_user_activity_history, log_activity, mark_notification_read, update_activity_status,
+    authenticate_user, create_access_token, create_refresh_token, get_user_activity_history, log_activity, mark_all_notifications_read, mark_notification_read, update_activity_status,
     verify_google_token, verify_token, get_password_hash, get_activity_stats, create_notification,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
@@ -62,6 +66,12 @@ from fastapi import Request
 # FastAPI App
 # ──────────────────────────────────────────────────────────────────────────────
 
+import sys
+
+# Windows-specific fix for Playwright/Subprocesses
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -191,6 +201,7 @@ async def register(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
+        user_id = user.id,
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
@@ -322,8 +333,9 @@ async def refresh_access_token(
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user profile"""
     if current_user.agency_url:
-        print(current_user.agency_url)
+        print(current_user.plan)
     return current_user
+
 
 
 @app.patch("/api/auth/me", response_model=UserResponse)
@@ -397,14 +409,15 @@ async def create_audit(
     user_id=current_user.id,
     type="audit",
     title="Audit started",
-    message=f"Your audit for {request.url} has been queued (job {job_id}).",
+    message=f"Your audit for {request.url} has been queued.",
     metadata={"job_id": job_id, "url": str(request.url)}
-)
+    )
     
     
     # Start background task
-    background_tasks.add_task(run_audit_task, job_id, str(request.url), current_user.id, db)
-    
+    # background_tasks.add_task(run_audit_task, job_id, str(request.url), current_user.id, db)
+    queue.enqueue(run_audit_task, job_id, str(request.url), current_user.id, retry=Retry(max=3, interval=[10, 30, 60]))
+    print("Audit job started...")
     return AuditResponse(
         job_id=job_id,
         status="pending",
@@ -479,12 +492,66 @@ async def list_audits(
 
 
     
+    # Calculate past 12 months aggregates
+    now = datetime.utcnow()
+    # Find start of the 12-month window (current month + 11 preceding months)
+    start_year = now.year
+    start_month = now.month - 11
+    while start_month <= 0:
+        start_month += 12
+        start_year -= 1
+    start_date = datetime(start_year, start_month, 1)
+
+    audits_12m = db.query(Audit.created_at, Audit.overall_score).filter(
+        Audit.user_id == current_user.id,
+        Audit.created_at >= start_date
+    ).all()
+
+    # Initialize monthly slots
+    monthly_data = []
+    for i in range(12):
+        y = now.year
+        m = now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        month_key = f"{y}-{m:02d}"
+        monthly_data.append({
+            "month": month_key,
+            "count": 0,
+            "total_score": 0,
+            "score_count": 0,
+            "avg_score": 0.0
+        })
+    monthly_data.reverse()
+
+    month_map = {item["month"]: item for item in monthly_data}
+
+    for created_at, overall_score in audits_12m:
+        m_key = f"{created_at.year}-{created_at.month:02d}"
+        if m_key in month_map:
+            month_map[m_key]["count"] += 1
+            if overall_score is not None:
+                month_map[m_key]["total_score"] += overall_score
+                month_map[m_key]["score_count"] += 1
+
+    for item in monthly_data:
+        if item["score_count"] > 0:
+            item["avg_score"] = round(item["total_score"] / item["score_count"], 1)
+        else:
+            item["avg_score"] = 0.0
+        del item["total_score"]
+        del item["score_count"]
+
     return PaginatedResponse(
         items=[AuditListItem.model_validate(a) for a in audits],
         total=total,
         page=page,
         page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        total_pages=(total + page_size - 1) // page_size,
+        metadata={
+            "monthly_audits": monthly_data
+        }
     )
 
 @app.get("/api/crawls")
@@ -1307,13 +1374,21 @@ async def get_activity_stats_endpoint(
 # ──────────────────────────────────────────────────────────────────────────────
 @app.get("/api/notifications")
 async def list_notifications(
-    page: int = 1, page_size: int = 50,
+    page: int = 1, page_size: int = 50, unread: bool  = True,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    print(current_user.plan)
     query = db.query(Notification).filter(Notification.user_id == current_user.id).order_by(Notification.created_at.desc())
+    if unread:
+        print("getting unread notifs")
+        query = query.filter(Notification.read == False)
+    
     total = query.count()
     items = query.offset((page-1)*page_size).limit(page_size).all()
+
+    
+
     return {
         "total": total,
         "page": page,
@@ -1328,6 +1403,12 @@ async def mark_read(notification_id: int, current_user: User = Depends(get_curre
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"success": True, "notification": NotificationItem.model_validate(n)}
 
+@app.post("/api/notifications/mark-read-all")
+async def mark_all_read(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    notifs = mark_all_notifications_read(db, current_user.id)
+    return {"success": True, "notifications" : [
+        NotificationItem.model_validate(n) for n in notifs
+    ]}
 # ──────────────────────────────────────────────────────────────────────────────
 # VISITOR TRACKING ENDPOINTS (For conversion analysis)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1703,8 +1784,123 @@ async def get_site_data(
         latest_crawl=crawl_summary
     )
 
-
-
+@app.get("/api/dashboard/summary")
+async def get_dashboard_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Everything the dashboard needs in one request:
+    - User credits + plan
+    - Recent audits (last 5)
+    - Recent crawls (last 5)
+    - Recent comparisons (last 3)
+    - Onboarding checklist state
+    """
+    from db.models import Audit, Crawl, Comparison, RankTracking
+    from sqlalchemy import desc
+ 
+    recent_audits = (
+        db.query(Audit)
+        .filter(Audit.user_id == current_user.id)
+        .order_by(desc(Audit.created_at))
+        .limit(2)
+        .all()
+    )
+ 
+    recent_crawls = (
+        db.query(Crawl)
+        .filter(Crawl.user_id == current_user.id)
+        .order_by(desc(Crawl.created_at))
+        .limit(2)
+        .all()
+    )
+ 
+    recent_comparisons = (
+        db.query(Comparison)
+        .filter(Comparison.user_id == current_user.id)
+        .order_by(desc(Comparison.created_at))
+        .limit(3)
+        .all()
+    )
+ 
+    has_tracking = db.query(RankTracking).filter(
+        RankTracking.user_id == current_user.id
+    ).first() is not None
+ 
+    # Auto-update checklist flags from real activity
+    changed = False
+    if recent_audits and not current_user.ob_audit_done:
+        current_user.ob_audit_done = True; changed = True
+    if recent_crawls and not current_user.ob_crawl_done:
+        current_user.ob_crawl_done = True; changed = True
+    if recent_comparisons and not current_user.ob_compare_done:
+        current_user.ob_compare_done = True; changed = True
+    if has_tracking and not current_user.ob_tracking_done:
+        current_user.ob_tracking_done = True; changed = True
+    if changed:
+        db.commit()
+ 
+    def _audit(a):
+        return {
+            "job_id": a.job_id, "url": a.url, "status": a.status,
+            "overall_score": a.overall_score, "created_at": a.created_at,
+        }
+ 
+    def _crawl(c):
+        return {
+            "job_id": c.job_id, "url": c.url, "status": c.status,
+            "pages_crawled": c.pages_crawled, "issues_found": c.issues_found,
+            "created_at": c.created_at,
+        }
+ 
+    def _comp(c):
+        return {
+            "job_id": c.job_id, "name": c.name,
+            "target_url": c.target_url, "status": c.status,
+            "target_score": c.target_score, "score_gap": c.score_gap,
+            "created_at": c.created_at,
+        }
+ 
+    plan_limits = {"free": 10, "pro": 10000, "agency": 100000}
+    agency_settings_done = current_user.agency_logo and current_user.agency_url
+    return {
+        "user": {
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "plan": current_user.plan,
+            "credits_remaining": current_user.credits_remaining,
+            "credits_limit": plan_limits.get(current_user.plan, 10),
+        },
+        "recent_audits":      [_audit(a) for a in recent_audits],
+        "recent_crawls":      [_crawl(c) for c in recent_crawls],
+        "recent_comparisons": [_comp(c)  for c in recent_comparisons],
+        "checklist": {
+            "audit_done":    current_user.ob_audit_done,
+            "crawl_done":    current_user.ob_crawl_done,
+            "compare_done":  current_user.ob_compare_done,
+            "tracking_done": current_user.ob_tracking_done,
+            "settings_done": agency_settings_done,
+            "dismissed":     current_user.ob_checklist_dismissed,
+            "all_done": all([
+                current_user.ob_audit_done,
+                current_user.ob_crawl_done,
+                current_user.ob_compare_done,
+                current_user.ob_tracking_done,
+                agency_settings_done,
+            ]),
+        },
+    }
+ 
+ 
+@app.post("/api/dashboard/checklist/dismiss")
+async def dismiss_checklist(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.ob_checklist_dismissed = True
+    db.commit()
+    return {"message": "Dismissed"}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
