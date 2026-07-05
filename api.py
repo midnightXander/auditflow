@@ -62,6 +62,8 @@ from contextlib import asynccontextmanager
 from db.migrations import run_migrations, check_migration_status
 from fastapi import Request
 
+from services.pdf_generator import PDFReportGenerator
+
 # ──────────────────────────────────────────────────────────────────────────────
 # FastAPI App
 # ──────────────────────────────────────────────────────────────────────────────
@@ -74,9 +76,13 @@ if sys.platform == 'win32':
     
 logger = logging.getLogger(__name__)
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Startup Events
 # ──────────────────────────────────────────────────────────────────────────────
+
+#pdf global instance
+pdf_gen = PDFReportGenerator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -103,8 +109,14 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Database already initialized: {e}")
     
     logger.info("✅ API ready to accept requests\n")
+
+    # Startup: Initialize the browser pool
+    await pdf_gen.start()
     
     yield
+
+    # Shutdown: Clean up the browser pool
+    await pdf_gen.stop()
     
     # Shutdown
     logger.info("🛑 Shutting down AuditFlow API...")

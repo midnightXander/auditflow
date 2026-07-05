@@ -1305,13 +1305,22 @@ async def download_pdf_report(
     #     branding,
     #     safe_filename
     # )
-    report_path = await generator.generate_audit_report(
-        job_id,
-        audit.results,
-        lead_info,
-        branding,
-        safe_filename
+
+    # report_path = await generator.generate_audit_report(
+    #     job_id,
+    #     audit.results,
+    #     lead_info,
+    #     branding,
+    #     safe_filename
+    # )
+
+    #use queue instead
+    report_path = await queue.enqueue_call(
+        func=generator.generate_audit_report,
+        args=(job_id, audit.results, lead_info, branding, safe_filename),
+        timeout=300  # Set a timeout for the job
     )
+    
 
     return FileResponse(
         path=report_path,

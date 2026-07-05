@@ -9,6 +9,7 @@ from typing import Dict, Optional, Any, List
 import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
+from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ TEMPLATE_NAME = "audit_report_template.jinja2.html"
 class PDFReportGenerator:
     """Generate professional PDF reports from audit results using Playwright HTML-to-PDF"""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, max_concurrent_renders=5, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
         self.output_dir = Path("uploads/pdfs")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -28,6 +29,24 @@ class PDFReportGenerator:
             loader=FileSystemLoader(str(TEMPLATE_DIR)),
             autoescape=True
         )
+        
+        # Limit to 5 concurrent PDF generations
+        self.semaphore = asyncio.Semaphore(max_concurrent_renders)
+        self.playwright = None
+        self.browser = None
+
+    async def start(self):
+        """Initialize the browser once at startup."""
+        self.playwright = await async_playwright().start()
+        # Launching the browser once
+        self.browser = await self.playwright.chromium.launch()
+
+    async def stop(self):
+        """Cleanup at shutdown."""
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
 
     # def generate_audit_report(
     #     self,
@@ -105,27 +124,40 @@ class PDFReportGenerator:
 
     async def _html_to_pdf(self, html_content: str, output_path: str) -> None:
         """Use Playwright headless Chromium to render HTML to PDF"""
-        from playwright.async_api import async_playwright
+        
+        async with self.semaphore: #Wait here until a slot if free
+            try:
+                # Create a new context instead of a new browser
+                context = await self.browser.new_context()
+                page = await context.new_page()
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+                await page.set_content(html_content, wait_until="networkidle")
+                await page.wait_for_timeout(1500)
+                
+                await page.pdf(path=output_path, format="A4", print_background=True, prefer_css_page_size=True,)
+            finally:    
+                # Closing the context, not the browser
+                await context.close()
 
-            # Set the HTML content and wait for fonts to load
-            await page.set_content(html_content, wait_until="networkidle")
+        # async with async_playwright() as p:
+        #     browser = await p.chromium.launch()
+        #     page = await browser.new_page()
 
-            # Give Google Fonts a moment to fully render
-            await page.wait_for_timeout(1500)
+        #     # Set the HTML content and wait for fonts to load
+        #     await page.set_content(html_content, wait_until="networkidle")
 
-            # Generate PDF with A4 page size
-            await page.pdf(
-                path=output_path,
-                format="A4",
-                print_background=True,
-                prefer_css_page_size=True,
-            )
+        #     # Give Google Fonts a moment to fully render
+        #     await page.wait_for_timeout(1500)
 
-            await browser.close()
+        #     # Generate PDF with A4 page size
+        #     await page.pdf(
+        #         path=output_path,
+        #         format="A4",
+        #         print_background=True,
+        #         prefer_css_page_size=True,
+        #     )
+
+        #     await browser.close()
 
     def _build_template_context(
         self,

@@ -519,8 +519,8 @@ def get_activity_stats(
     }
 
     average_audit_score = {
-        "current": average_score_this_month,
-        "previous": average_score_previous_month,
+        "current": round(average_score_this_month,1),
+        "previous": round(average_score_previous_month,1),
         "change": percent_change
     }
     print(average_audit_score)
