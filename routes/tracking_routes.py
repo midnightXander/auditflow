@@ -27,6 +27,8 @@ from db.schemas import (
     RankTrackingResponse, RankTrackingRequest, RankTrackingListItem, RankTrackingStatus, CreateTrackingRequest, CreateTrackingResponse
 )
 
+from rq_app import queue
+from rq import Retry
 
 
 from tasks import  run_rank_tracking_task, calculate_next_check, check_for_alerts, run_tracking_task, _next_check_time
@@ -168,7 +170,8 @@ async def create_rank_tracking(
     metadata={"job_id": job_id, "url": str(req.domain)}
     )
 
-    background_tasks.add_task(run_tracking_task, job_id, current_user.id)
+    # background_tasks.add_task(run_tracking_task, job_id, current_user.id)
+    queue.enqueue(run_rank_tracking_task, job_id, current_user.id)
     
     return CreateTrackingResponse(
         job_id=job_id,
@@ -833,7 +836,8 @@ async def refresh_campaign(
     c.status = "pending"
     c.progress = 0
     db.commit()
-    background_tasks.add_task(run_tracking_task, job_id, current_user.id)
+    # background_tasks.add_task(run_tracking_task, job_id, current_user.id)
+    queue.enqueue(run_rank_tracking_task, job_id, current_user.id)
     return {"message": "Refresh started"}
  
  

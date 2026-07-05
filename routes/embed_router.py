@@ -10,6 +10,8 @@ from datetime import datetime
 import uuid
 from starlette.concurrency import run_in_threadpool
 
+import os
+
 from db.database import get_db
 from db.models import User, Audit, EmbedLead
 from db.auth import can_use_feature, get_current_user
@@ -86,6 +88,7 @@ async def get_widget_script(
     
     # Generate widget configuration
     print(user.embed_border_radius)
+    API_BASE = os.getenv("BACKEND_URL","http://localhost:8000")
     config = {
         "apiKey": api_key,
         "agencyName": user.agency_name or "OutAudits",
@@ -108,7 +111,7 @@ async def get_widget_script(
     widget_js = f"""
 (function() {{
   const CONFIG = {config};
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = '{API_BASE}';
   
   // Get origin for CORS
   const getApiBase = () => {{
@@ -118,6 +121,7 @@ async def get_widget_script(
       return API_BASE;
     }}
   }};
+  console.log(getApiBase())
   
   // Create widget container
   const createWidget = () => {{

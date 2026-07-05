@@ -672,7 +672,8 @@ async def create_crawl(
 )
     
     # TODO: Add background task
-    background_tasks.add_task(run_crawl_task, job_id, str(request.url), current_user.id, db)
+    # background_tasks.add_task(run_crawl_task, job_id, str(request.url), current_user.id, db)
+    queue.enqueue(run_crawl_task, job_id, str(request.url), current_user.id, retry = Retry(max=3, interval=[10, 30, 60]) )
     
     return AuditResponse(job_id=job_id, status="pending", message="Crawl started")
 
@@ -738,7 +739,8 @@ async def create_comparison(
     db.add(comp)
     db.commit()
  
-    background_tasks.add_task(run_comparison_task, job_id)
+    # background_tasks.add_task(run_comparison_task, job_id)
+    queue.enqueue(run_comparison_task, job_id, retry = Retry(max=3, interval=[10, 30, 60]) )
  
     return CreateComparisonResponse(
         job_id=job_id,

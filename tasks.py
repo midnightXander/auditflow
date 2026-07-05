@@ -62,7 +62,7 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
     finally:
         db.close()
 
-async def run_crawl_task(job_id: str, url: str, user_id: int, db_session):
+def run_crawl_task(job_id: str, url: str, user_id: int, db_session):
     """Background task for deep crawl (needs separate DB session)"""
     from db.database import SessionLocal
     db = SessionLocal()
@@ -77,7 +77,7 @@ async def run_crawl_task(job_id: str, url: str, user_id: int, db_session):
         crawl.progress = 30
         db.commit()
         
-        results = await crawl_website(url, max_pages=crawl.max_pages)
+        results = asyncio.run(crawl_website(url, max_pages=crawl.max_pages))
 
         crawl.status = "completed"
         crawl.progress = 100
@@ -140,7 +140,7 @@ async def run_comparison_task2(job_id: str, target_url: str, competitor_urls: Li
     finally:
         db.close()
 
-async def run_comparison_task(job_id: str) -> None:
+def run_comparison_task(job_id: str) -> None:
     from db.database import SessionLocal
  
     db: Session = SessionLocal()
@@ -157,11 +157,11 @@ async def run_comparison_task(job_id: str) -> None:
             comp.progress = int(pct)
             db.commit()
  
-        results = await compare_competitors(
+        results = asyncio.run(compare_competitors(
             target_url=comp.target_url,
             competitor_urls=comp.competitor_urls,
             progress_callback=progress_cb,
-        )
+        ))
  
         # ── Extract snapshot for fast KPI queries ──
         overall = results.get("overall_scores", {})
@@ -215,7 +215,7 @@ async def run_keyword_analysis_task(job_id: str   , user_id: int, db_session):
     # try:
     #     analaysis = db.query(KeywordAnalysis)
 
-async def run_rank_tracking_task(job_id: str, user_id: int, db_session):
+def run_rank_tracking_task(job_id: str, user_id: int):
     """Background task to run rank tracking"""
     from db.database import SessionLocal
     db = SessionLocal()
@@ -235,12 +235,12 @@ async def run_rank_tracking_task(job_id: str, user_id: int, db_session):
             db.commit()
         
         # Run tracking
-        results = await track_rankings(
+        results = asyncio.run(track_rankings(
             domain=tracking.domain,
             keywords=tracking.keywords,
             engines=tracking.engines,
             progress_callback=update_progress
-        )
+        ))
         
         # Store results
         tracking.status = "completed"
@@ -249,17 +249,17 @@ async def run_rank_tracking_task(job_id: str, user_id: int, db_session):
         tracking.last_checked = datetime.utcnow()
         
         # Save historical data
-        await save_to_history(tracking, results, db)
+        asyncio.run(save_to_history(tracking, results, db))
         
         # Generate alerts if needed
-        alerts = await check_for_alerts(tracking, db)
+        alerts = asyncio.run(check_for_alerts(tracking, db))
         
         if alerts:
             tracking.results['alerts'] = alerts
             # Send email notification
             user = db.query(User).filter(User.id == user_id).first()
             if user:
-                await send_alert_email(user, tracking, alerts)
+                asyncio.run(send_alert_email(user, tracking, alerts))
         
         # Schedule next check
         if tracking.is_scheduled:

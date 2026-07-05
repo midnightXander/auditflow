@@ -4,6 +4,9 @@ Runs a real Lighthouse audit + 50-page crawl, stores under a session token.
 """
 
 from __future__ import annotations
+import asyncio
+from rq_app import queue
+from rq import Retry
 
 import os
 import secrets
@@ -33,7 +36,7 @@ class ClaimRequest(BaseModel):
 
 # ── Background task ─────────────────────────────────────────────────────────────
 
-async def run_anon_audit(session_token: str) -> None:
+def run_anon_audit(session_token: str) -> None:
     from db.database import SessionLocal
     from db.models import AnonymousAudit
     from auditor import WebsiteAuditor
@@ -58,7 +61,7 @@ async def run_anon_audit(session_token: str) -> None:
         # ── STAGE 1: Lighthouse audit ──────────────────────────────
         try:
             auditor = WebsiteAuditor(row.url)
-            audit_results = await auditor.run_full_audit()
+            audit_results = asyncio.run(auditor.run_full_audit())
 
             row.audit_score = audit_results.get("overall_score")
             row.audit_results = audit_results
@@ -83,11 +86,11 @@ async def run_anon_audit(session_token: str) -> None:
             db.commit()
 
         try:
-            crawl_results = await crawl_website(
+            crawl_results = asyncio.run(crawl_website(
                 url=row.url,
                 max_pages=50,
                 progress_callback=crawl_progress,
-            )
+            ))
             row.crawl_results = crawl_results
             row.pages_crawled = crawl_results.get("summary", {}).get("total_pages_crawled", 0)
         except Exception as e:
@@ -146,7 +149,8 @@ async def start_anon_audit(
     finally:
         db.close()
 
-    background_tasks.add_task(run_anon_audit, token)
+    # background_tasks.add_task(run_anon_audit, token)
+    queue.enqueue(run_anon_audit, token, retry = Retry(max=3, interval=[10, 30, 60]) )
 
     return {"session_token": token, "status": "pending"}
 
