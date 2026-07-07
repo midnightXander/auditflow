@@ -110,8 +110,12 @@ async def lifespan(app: FastAPI):
     
     logger.info("✅ API ready to accept requests\n")
 
-    # Startup: Initialize the browser pool
-    # await pdf_gen.start()
+    try:
+        # Startup: Initialize the browser pool
+        await pdf_gen.start()
+    except Exception as e:
+        logger.error(f"Failed to start PDF generator: {e}")
+        print(f"Failed to start PDF generator: {e}")    
     
     yield
 
