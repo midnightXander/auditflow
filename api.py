@@ -111,12 +111,12 @@ async def lifespan(app: FastAPI):
     logger.info("✅ API ready to accept requests\n")
 
     # Startup: Initialize the browser pool
-    await pdf_gen.start()
+    # await pdf_gen.start()
     
     yield
 
     # Shutdown: Clean up the browser pool
-    await pdf_gen.stop()
+    # await pdf_gen.stop()
     
     # Shutdown
     logger.info("🛑 Shutting down AuditFlow API...")
