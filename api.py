@@ -111,12 +111,12 @@ async def lifespan(app: FastAPI):
     logger.info("✅ API ready to accept requests\n")
 
     # Startup: Initialize the browser pool
-    # await pdf_gen.start()
+    await pdf_gen.start()
     
     yield
 
     # Shutdown: Clean up the browser pool
-    # await pdf_gen.stop()
+    await pdf_gen.stop()
     
     # Shutdown
     logger.info("🛑 Shutting down AuditFlow API...")
@@ -1388,7 +1388,7 @@ async def get_activity_stats_endpoint(
 # ──────────────────────────────────────────────────────────────────────────────
 @app.get("/api/notifications")
 async def list_notifications(
-    page: int = 1, page_size: int = 50, unread: bool  = True,
+    page: int = 1, page_size: int = 50, unread: bool  = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1895,6 +1895,7 @@ async def get_dashboard_summary(
             "compare_done":  current_user.ob_compare_done,
             "tracking_done": current_user.ob_tracking_done,
             "settings_done": agency_settings_done,
+            "apikey_generated" : current_user.embed_api_key != None,
             "dismissed":     current_user.ob_checklist_dismissed,
             "all_done": all([
                 current_user.ob_audit_done,

@@ -1340,8 +1340,8 @@ async def generate_embed_api_key(
 ):
     """Generate new embed API key for agency"""
     
-    if can_use_feature(current_user) is False:
-        raise HTTPException(status_code=403, detail="Feature not available for your plan")
+    # if can_use_feature(current_user) is False:
+    #     raise HTTPException(status_code=403, detail="Feature not available for your plan")
 
     # Generate unique API key
     api_key = f"af_embed_{uuid.uuid4().hex}"
@@ -1452,12 +1452,18 @@ async def get_embed_leads(
     
     leads = db.query(EmbedLead).filter(EmbedLead.user_id == current_user.id).all()
 
-    def get_audit_job_id(audit_id):
+    def get_audit_id_and_score(audit_id):
         audit = db.query(Audit).filter(Audit.id == audit_id).first()
+        
+        data = {
+            "job_id" : None,
+            "score" : 0
+        }
         if audit:
-            return audit.job_id
-        return None
-    
+            data['job_id'] = audit.job_id
+            data['score'] = audit.overall_score
+        return data
+
     # Calculate previous calendar month range (start of previous month -> start of current month)
     start_current_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     last_day_prev_month = start_current_month - timedelta(days=1)
@@ -1506,7 +1512,8 @@ async def get_embed_leads(
                 "notes" : lead.notes,
                 "source": lead.source,
                 "audit_id" : lead.audit_id,
-                "job_id" : get_audit_job_id(lead.audit_id),
+                "job_id" : get_audit_id_and_score(lead.audit_id)['job_id'],
+                "score" : get_audit_id_and_score(lead.audit_id)['score'],
                 "created_at": lead.created_at.isoformat(),
 
             }
