@@ -282,6 +282,35 @@ async def claim_anon_audit(req: ClaimRequest):
         row.claimed_at = datetime.utcnow()
         db.commit()
 
+        # Re-send / personalise the welcome email now that we have real data.
+        # The initial welcome (sent at register time) had None for audit_score;
+        # now we can send a richer version — but only if the welcome hasn't
+        # already been opened (we don't want to spam).
+        try:
+            from services.email_sequences import send_welcome_email
+            from db.models import User, EmailSequenceLog
+            user = db.query(User).filter(User.id == req.user_id).first()
+            existing_log = db.query(EmailSequenceLog).filter(
+                EmailSequenceLog.user_id == req.user_id,
+                EmailSequenceLog.sequence_slug == "welcome",
+            ).first()
+ 
+            if user and existing_log and existing_log.opened_at is None:
+                # Delete the unopened welcome so we can send a personalised one
+                db.delete(existing_log)
+                db.commit()
+                send_welcome_email(
+                    user_id=req.user_id,
+                    email=user.email,
+                    name=user.full_name,
+                    audit_score=row.audit_score,
+                    audit_url=f"{os.getenv('FRONTEND_URL','http://localhost:3000')}/dashboard",
+                    domain=row.url.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0],
+                    db=db,
+                )
+        except Exception:
+            pass  # never break the claim flow
+
         return {"message": "Claimed", "audit_created": row.audit_results is not None}
     finally:
         db.close()

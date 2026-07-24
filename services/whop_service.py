@@ -45,7 +45,7 @@ company_id = os.getenv("WHOP_COMPANY_ID", "")
 PLAN_CONFIG = {
     "pro": {
         "product_id": os.getenv("WHOP_PRO_PRODUCT_ID", ""),
-        "price": 29,
+        "price": 13,
         "credits": 10000,
         "name": "Pro Plan"
     },
@@ -402,6 +402,7 @@ def get_trial_status(user: User) -> Dict[str, Any]:
     now = datetime.utcnow()
     trial_active = False
     days_remaining = None
+    
     
     if user.trial_started_at and user.trial_ends_at:
         if now < user.trial_ends_at:

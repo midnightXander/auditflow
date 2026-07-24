@@ -115,12 +115,18 @@ async def lifespan(app: FastAPI):
         await pdf_gen.start()
     except Exception as e:
         logger.error(f"Failed to start PDF generator: {e}")
-        print(f"Failed to start PDF generator: {e}")    
+        print(f"Failed to start PDF generator: {e}") 
+
+    import services.schedular as _sched
+    _scheduler = _sched.start(app)
+
     
     yield
 
     # Shutdown: Clean up the browser pool
     # await pdf_gen.stop()
+
+    _scheduler.shutdown(wait=False) 
     
     # Shutdown
     logger.info("🛑 Shutting down AuditFlow API...")
@@ -148,10 +154,114 @@ app.include_router(tracking_router)
 app.include_router(anon_router)
 
 # Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
-    init_db()
+# @app.on_event("startup")
+# async def startup_event():
+#     init_db()
+#     from services.schedular import start_scheduler
+#     start_scheduler()
+ 
+ 
+# @app.on_event("shutdown")
+# async def shutdown_event():
+#     from services.schedular import stop_scheduler
+#     stop_scheduler()
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UNSUBSCRIBE  (public — no auth, linked from every sequence email)
+# ──────────────────────────────────────────────────────────────────────────────
+ 
+@app.get("/api/unsubscribe")
+async def unsubscribe(user_id: int, db: Session = Depends(get_db)):
+    """
+    One-click unsubscribe linked from every sequence email footer.
+    We use user_id (obscure enough for a footer link; sign with HMAC in
+    production if you want extra security).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Not found")
+    user.email_seq_unsubscribed = True
+    db.commit()
+    return {"message": "You have been unsubscribed from all OutAudits marketing emails."}
+ 
+ 
+# ──────────────────────────────────────────────────────────────────────────────
+# CRON: email sequence processor
+# Called by an external cron job every hour via a secret header.
+# Also callable by admins for testing.
+# ──────────────────────────────────────────────────────────────────────────────
+ 
+CRON_SECRET = os.getenv("CRON_SECRET", "")
+ 
+@app.post("/api/internal/run-email-sequences")
+async def run_email_sequences(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Process and send any sequence emails that are due.
+    Protected by a shared secret in the X-Cron-Secret header so that
+    external schedulers (GitHub Actions, cron-job.org, etc.) can call it
+    without needing a user JWT.
+    """
+    secret = request.headers.get("X-Cron-Secret", "")
+    if CRON_SECRET and secret != CRON_SECRET:
+        raise HTTPException(403, "Invalid cron secret")
+ 
+    from services.email_sequences import process_sequences
+    summary = process_sequences(db)
+    return {"ok": True, "summary": summary}
+ 
+ 
+@app.post("/api/internal/test-sequence/{slug}")
+async def test_sequence_email(
+    slug: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: force-send a specific sequence slug to the current user.
+    Deletes any existing log row for that slug first so it sends fresh.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(403, "Admin only")
+ 
+    from db.models import EmailSequenceLog
+    from services.email_sequences import (
+        send_welcome_email, _send_day1, _send_day3, _send_day7, _send_day14,
+        _get_latest_audit,
+    )
+ 
+    # Delete existing log row so the email fires again
+    db.query(EmailSequenceLog).filter(
+        EmailSequenceLog.user_id == current_user.id,
+        EmailSequenceLog.sequence_slug == slug,
+    ).delete()
+    db.commit()
+ 
+    plan_credits = {"free": 10, "pro": 100, "agency": 1000}
+    limit = plan_credits.get(current_user.plan, 10)
+ 
+    dispatchers = {
+        "welcome": lambda: send_welcome_email(
+            current_user.id, current_user.email, current_user.full_name,
+            None, None, None, db,
+        ),
+        "day_1":  lambda: _send_day1(current_user.id, current_user.email, current_user.full_name, db),
+        "day_3":  lambda: _send_day3(current_user.id, current_user.email, current_user.full_name, db),
+        "day_7":  lambda: _send_day7(current_user.id, current_user.email, current_user.full_name, db),
+        "day_14": lambda: _send_day14(
+            current_user.id, current_user.email, current_user.full_name,
+            current_user.plan, current_user.credits_remaining, limit, db,
+        ),
+    }
+ 
+    if slug not in dispatchers:
+        raise HTTPException(400, f"Unknown slug. Valid: {list(dispatchers)}")
+ 
+    sent = dispatchers[slug]()
+    return {"sent": sent, "slug": slug, "to": current_user.email}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AUTHENTICATION ENDPOINTS
@@ -197,18 +307,36 @@ async def register(
             message=f"Add your agency settings to get started.",
             # metadata={"job_id": job_id, "url": str(req.domain)}
             )
-    # email_service.send_welcome_email()
     
-    # Mark visitor as converted
-    from services.visitor_tracking import extract_ip_from_request
-    ip_address = extract_ip_from_request(request)
-    from db.models import Visitor
-    visitor = db.query(Visitor).filter(Visitor.ip_address == ip_address).order_by(Visitor.visited_at.desc()).first()
-    if visitor:
-        visitor.converted = True
-        visitor.converted_user_id = user.id
-        db.commit()
-        logger.info(f"[CONVERSION] Visitor {ip_address} converted to user {user.id}")
+    # Fire welcome email immediately.
+    # Email failure must never break registration — hence the broad except.
+    try:
+        from services.email_sequences import send_welcome_email
+        send_welcome_email(
+            user_id=user.id,
+            email=user.email,
+            name=user.full_name,
+            audit_score=None,    # personalised by the /api/anon/claim route
+            audit_url=None,
+            domain=None,
+            db=db,
+        )
+    except Exception:
+        pass
+    
+    try:
+        # Mark visitor as converted
+        from services.visitor_tracking import extract_ip_from_request
+        ip_address = extract_ip_from_request(request)
+        from db.models import Visitor
+        visitor = db.query(Visitor).filter(Visitor.ip_address == ip_address).order_by(Visitor.visited_at.desc()).first()
+        if visitor:
+            visitor.converted = True
+            visitor.converted_user_id = user.id
+            db.commit()
+            logger.info(f"[CONVERSION] Visitor {ip_address} converted to user {user.id}")
+    except Exception:
+        pass        
     
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})
@@ -280,6 +408,8 @@ async def google_auth(auth_data: GoogleAuthRequest, db: Session = Depends(get_db
                 credits_reset_date=datetime.utcnow() + timedelta(days=30)
             )
             db.add(user)
+            db.commit()
+            db.refresh(user)
             
             create_notification(
             db=db,
@@ -289,7 +419,21 @@ async def google_auth(auth_data: GoogleAuthRequest, db: Session = Depends(get_db
             message=f"Add your agency settings to get started.",
             # metadata={"job_id": job_id, "url": str(req.domain)}
             )
-            # email_service.send_welcome_email()
+            # Fire welcome email immediately.
+            # Email failure must never break registration — hence the broad except.
+            try:
+                from services.email_sequences import send_welcome_email
+                send_welcome_email(
+                    user_id=user.id,
+                    email=user.email,
+                    name=user.full_name,
+                    audit_score=None,    # personalised by the /api/anon/claim route
+                    audit_url=None,
+                    domain=None,
+                    db=db,
+                )
+            except Exception:
+                pass
         
         db.commit()
         db.refresh(user)
@@ -420,6 +564,11 @@ async def create_audit(
         target=str(request.url),
         status="pending"
     )
+    
+    
+    # Start background task
+    # background_tasks.add_task(run_audit_task, job_id, str(request.url), current_user.id, db)
+    queue.enqueue(run_audit_task, job_id, str(request.url), current_user.id, retry=Retry(max=3, interval=[10, 30, 60]))
     create_notification(
     db=db,
     user_id=current_user.id,
@@ -429,10 +578,6 @@ async def create_audit(
     metadata={"job_id": job_id, "url": str(request.url)}
     )
     
-    
-    # Start background task
-    # background_tasks.add_task(run_audit_task, job_id, str(request.url), current_user.id, db)
-    queue.enqueue(run_audit_task, job_id, str(request.url), current_user.id, retry=Retry(max=3, interval=[10, 30, 60]))
     print("Audit job started...")
     return AuditResponse(
         job_id=job_id,
@@ -1861,20 +2006,20 @@ async def get_dashboard_summary(
  
     def _audit(a):
         return {
-            "job_id": a.job_id, "url": a.url, "status": a.status,
+            "job_id": a.job_id, "name": a.client_name, "url": a.url, "status": a.status,
             "overall_score": a.overall_score, "created_at": a.created_at,
         }
  
     def _crawl(c):
         return {
-            "job_id": c.job_id, "url": c.url, "status": c.status,
+            "job_id": c.job_id, "name": c.client_name, "url": c.url, "status": c.status,
             "pages_crawled": c.pages_crawled, "issues_found": c.issues_found,
             "created_at": c.created_at,
         }
  
     def _comp(c):
         return {
-            "job_id": c.job_id, "name": c.name,
+            "job_id": c.job_id, "name": c.client_name,
             "target_url": c.target_url, "status": c.status,
             "target_score": c.target_score, "score_gap": c.score_gap,
             "created_at": c.created_at,

@@ -891,8 +891,46 @@ async def refresh_rank_tracking(
     db.commit()
     
     # Start background task
-    background_tasks.add_task(run_rank_tracking_task, job_id, current_user.id, db)
+    #background_tasks.add_task(run_rank_tracking_task, job_id, current_user.id, db)
+    queue.enqueue(run_rank_tracking_task, job_id, current_user.id)
     
     return {"message": "Refresh started"}
+
+# async def run_scheduled_rank_checks():
+#     """Run all scheduled rank checks that are due"""
+#     from db.database import SessionLocal
+#     from db.models import RankTracking, User
+#     from routes.tracking_routes import run_rank_tracking_task
+#     from datetime import datetime
+#     import asyncio
+#     from sqlalchemy import and_
+
+#     db = SessionLocal()
+    
+#     now = datetime.utcnow()
+    
+#     # Find all trackings due for check
+#     due_trackings = db.query(RankTracking).filter(
+#         and_(
+#             RankTracking.is_scheduled == True,
+#             RankTracking.next_check <= now,
+#             RankTracking.status != "running"
+#         )
+#     ).all()
+    
+#     print(f"Found {len(due_trackings)} rank trackings due for check")
+    
+#     for tracking in due_trackings:
+#         try:
+#             # Check if user has credits
+#             user = db.query(User).filter(User.id == tracking.user_id).first()
+#             if not user or user.credits_remaining < 1:
+#                 continue
+            
+#             # Run tracking
+#             asyncio.run(run_rank_tracking_task(tracking.job_id, tracking.user_id, db))
+            
+#         except Exception as e:
+#             print(f"Error running scheduled tracking {tracking.job_id}: {e}")    
 
 

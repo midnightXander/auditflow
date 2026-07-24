@@ -289,6 +289,358 @@ def send_credits_low_email(email: str, credits_remaining: int, user_name: Option
 
 
 
+    send_email(email, f"⚠️ Only {credits_remaining} credits remaining", html)
+
+
+def send_trial_start_email(user):
+    """Send email confirming start of 14-day Pro trial"""
+    name = user.full_name or "there"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #2D3748; background-color: #F7FAFC; }}
+            .container {{ max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }}
+            .header {{ background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; padding: 40px 30px; text-align: center; }}
+            .content {{ padding: 40px 30px; }}
+            .feature-list {{ margin: 30px 0; padding-left: 0; list-style-type: none; }}
+            .feature-item {{ margin-bottom: 15px; padding-left: 30px; position: relative; }}
+            .feature-item::before {{ content: "✓"; position: absolute; left: 0; color: #0072FF; font-weight: bold; font-size: 18px; }}
+            .button {{ display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: bold; text-align: center; box-shadow: 0 4px 10px rgba(0, 114, 255, 0.3); }}
+            .footer {{ text-align: center; padding: 25px; color: #718096; font-size: 12px; background-color: #EDF2F7; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 26px;">🚀 Pro Trial Activated!</h1>
+            </div>
+            <div class="content">
+                <p>Hi {name},</p>
+                <p>Welcome to <strong>AuditFlow Pro</strong>! Your 14-day free trial is officially active, and we've added <strong>10,000 credits</strong> to your account.</p>
+                
+                <h3 style="color: #1A202C; margin-top: 30px;">Here is what you can do with Pro:</h3>
+                <ul class="feature-list">
+                    <li class="feature-item"><strong>Deep Site Crawls:</strong> Crawl up to 500 pages per audit to check for broken links and metadata issues.</li>
+                    <li class="feature-item"><strong>Competitor Comparison:</strong> Compare your domain alongside 3 competitors to discover gaps.</li>
+                    <li class="feature-item"><strong>Rank Tracking:</strong> Track keyword positions daily across Google and Brave search.</li>
+                    <li class="feature-item"><strong>White-Label Reports:</strong> Add your agency branding and logo to professional PDFs.</li>
+                </ul>
+
+                <p style="text-align: center; margin: 35px 0 20px;">
+                    <a href="{FRONTEND_URL}/dashboard" class="button" style="color: white;">Go to Dashboard</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Your free trial ends on {user.trial_ends_at.strftime('%Y-%m-%d') if user.trial_ends_at else '14 days'}.</p>
+                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text = f"""
+    Pro Trial Activated!
+    
+    Hi {name},
+    
+    Welcome to AuditFlow Pro! Your 14-day free trial is active and we have added 10,000 credits to your account.
+    
+    With Pro, you can access:
+    - Deep Site Crawls (up to 500 pages)
+    - Competitor Comparisons (up to 3 competitors)
+    - Daily Rank Tracking
+    - White-label PDF reports
+    
+    Log in to start: {FRONTEND_URL}/dashboard
+    """
+    
+    send_email(user.email, "🚀 Your Pro 14-day Free Trial has started!", html, text)
+
+
+def send_trial_day3_email(user):
+    """Send Day 3 email explaining tips and features"""
+    name = user.full_name or "there"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #2D3748; background-color: #F7FAFC; }}
+            .container {{ max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }}
+            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; text-align: center; }}
+            .content {{ padding: 40px 30px; }}
+            .tip-box {{ background-color: #F7FAFC; border-left: 4px solid #764ba2; padding: 20px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }}
+            .button {{ display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: bold; text-align: center; }}
+            .footer {{ text-align: center; padding: 25px; color: #718096; font-size: 12px; background-color: #EDF2F7; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 26px;">💡 Supercharge Your SEO</h1>
+            </div>
+            <div class="content">
+                <p>Hi {name},</p>
+                <p>You've been in your AuditFlow Pro trial for 3 days! We want to make sure you're getting the absolute most value out of your remaining credits.</p>
+                
+                <div class="tip-box">
+                    <h4 style="margin: 0 0 10px; color: #764ba2;">🔍 Tip #1: Setup Rank Tracking</h4>
+                    <p style="margin: 0; font-size: 14px;">Monitor your keywords daily. Go to the Rank Tracking page, enter your primary keywords, and observe how your positions fluctuate.</p>
+                </div>
+                
+                <div class="tip-box">
+                    <h4 style="margin: 0 0 10px; color: #764ba2;">📊 Tip #2: Run a Competitor Report</h4>
+                    <p style="margin: 0; font-size: 14px;">Don't audit in a vacuum! Compare your website's performance, load times, and SEO scores directly side-by-side with your competitors.</p>
+                </div>
+
+                <p style="text-align: center; margin: 35px 0 20px;">
+                    <a href="{FRONTEND_URL}/dashboard" class="button" style="color: white;">Launch an Audit Now</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text = f"""
+    Supercharge Your SEO
+    
+    Hi {name},
+    
+    Here are a couple of quick tips to make the most of your AuditFlow Pro trial:
+    
+    1. Setup Rank Tracking: Monitor keyword positions daily across search engines.
+    2. Run a Competitor Report: Compare your scores and metrics against up to 3 competitors.
+    
+    Launch a check here: {FRONTEND_URL}/dashboard
+    """
+    
+    send_email(user.email, "💡 Get the most out of your AuditFlow Pro Trial", html, text)
+
+
+def send_trial_day10_email(user):
+    """Send Day 10 upgrade reminder email"""
+    name = user.full_name or "there"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #2D3748; background-color: #F7FAFC; }}
+            .container {{ max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }}
+            .header {{ background: linear-gradient(135deg, #FF512F 0%, #DD2476 100%); color: white; padding: 40px 30px; text-align: center; }}
+            .content {{ padding: 40px 30px; }}
+            .plan-table {{ width: 100%; border-collapse: collapse; margin: 25px 0; }}
+            .plan-table th, .plan-table td {{ padding: 12px; border-bottom: 1px solid #E2E8F0; text-align: left; }}
+            .plan-table th {{ background-color: #F7FAFC; font-weight: bold; color: #4A5568; }}
+            .button {{ display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #FF512F 0%, #DD2476 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: bold; text-align: center; box-shadow: 0 4px 10px rgba(221, 36, 118, 0.3); }}
+            .footer {{ text-align: center; padding: 25px; color: #718096; font-size: 12px; background-color: #EDF2F7; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 26px;">⏳ Your Trial is Wrapping Up</h1>
+            </div>
+            <div class="content">
+                <p>Hi {name},</p>
+                <p>Your 14-day AuditFlow Pro trial will end in <strong>4 days</strong>. Don't lose access to your keyword histories and audit records!</p>
+                
+                <h3 style="color: #1A202C; margin-top: 30px;">Pro vs. Free Comparison:</h3>
+                <table class="plan-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Free Plan</th>
+                            <th>Pro Plan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Monthly Credits</strong></td>
+                            <td>20</td>
+                            <td>10,000</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Keyword Tracking</strong></td>
+                            <td>None</td>
+                            <td>Daily Tracking</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Crawl Page Limit</strong></td>
+                            <td>None</td>
+                            <td>500 pages</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Agency PDF Branding</strong></td>
+                            <td>No</td>
+                            <td>Yes</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p style="text-align: center; margin: 35px 0 20px;">
+                    <a href="{FRONTEND_URL}/pricing" class="button" style="color: white;">Lock In Pro Plan ($29/mo)</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text = f"""
+    Your Trial is Wrapping Up
+    
+    Hi {name},
+    
+    Your 14-day AuditFlow Pro trial will end in 4 days.
+    
+    Here is a quick overview of what you lose when you downgrade to Free:
+    - Credits drop from 10,000 to just 20 per month.
+    - Daily keyword rank tracking is disabled.
+    - Crawls will no longer scan up to 500 pages.
+    - Custom agency white-label reports are locked.
+    
+    Lock in Pro plan today for $29/mo: {FRONTEND_URL}/pricing
+    """
+    
+    send_email(user.email, "⏳ 4 days left in your Pro Trial", html, text)
+
+
+def send_trial_expiring_email(user):
+    """Send Day 13 expiring soon email (contains 30% discount offer)"""
+    name = user.full_name or "there"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #2D3748; background-color: #F7FAFC; }}
+            .container {{ max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }}
+            .header {{ background: linear-gradient(135deg, #f857a6 0%, #ff5858 100%); color: white; padding: 40px 30px; text-align: center; }}
+            .content {{ padding: 40px 30px; }}
+            .deal-box {{ background-color: #FFF5F5; border: 2px dashed #E53E3E; padding: 25px; margin: 25px 0; border-radius: 8px; text-align: center; }}
+            .button {{ display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #f857a6 0%, #ff5858 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: bold; text-align: center; box-shadow: 0 4px 10px rgba(255, 88, 88, 0.3); }}
+            .footer {{ text-align: center; padding: 25px; color: #718096; font-size: 12px; background-color: #EDF2F7; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 26px;">⚠️ Pro Trial Expires Tomorrow</h1>
+            </div>
+            <div class="content">
+                <p>Hi {name},</p>
+                <p>Your AuditFlow Pro trial expires in exactly <strong>24 hours</strong>. After expiration, your plan will automatically revert to the Free tier, and unused trial credits will be removed.</p>
+                
+                <div class="deal-box">
+                    <h3 style="color: #C53030; margin-top: 0; margin-bottom: 10px;">🎉 Exclusive 30% OFF Upgrade Deal</h3>
+                    <p style="margin: 0 0 15px; font-size: 15px;">Upgrade within the next 3 days and get <strong>30% OFF</strong> your first month of the Pro plan.</p>
+                    <p style="font-size: 24px; font-weight: bold; margin: 0; color: #2D3748;">$20.30 <span style="font-size: 15px; font-weight: normal; text-decoration: line-through; color: #A0AEC0;">$29.00</span></p>
+                </div>
+
+                <p style="text-align: center; margin: 35px 0 20px;">
+                    <a href="{FRONTEND_URL}/pricing" class="button" style="color: white;">Claim 30% Off Upgrade</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text = f"""
+    Pro Trial Expires Tomorrow!
+    
+    Hi {name},
+    
+    Your AuditFlow Pro trial expires in exactly 24 hours. Your plan will revert to the Free tier.
+    
+    To help you stay on Pro, we are giving you an exclusive 30% OFF your first month!
+    Upgrade now for just $20.30 (normally $29.00).
+    
+    Claim discount: {FRONTEND_URL}/pricing
+    """
+    
+    send_email(user.email, "⚠️ Action Required: Your Pro Trial expires tomorrow!", html, text)
+
+
+def send_trial_expired_email(user):
+    """Send Day 14 trial expired email"""
+    name = user.full_name or "there"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #2D3748; background-color: #F7FAFC; }}
+            .container {{ max-width: 600px; margin: 20px auto; padding: 0; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }}
+            .header {{ background: #4A5568; color: white; padding: 40px 30px; text-align: center; }}
+            .content {{ padding: 40px 30px; }}
+            .deal-box {{ background-color: #FFF5F5; border: 2px dashed #E53E3E; padding: 25px; margin: 25px 0; border-radius: 8px; text-align: center; }}
+            .button {{ display: inline-block; padding: 15px 30px; background: #4A5568; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; text-align: center; }}
+            .footer {{ text-align: center; padding: 25px; color: #718096; font-size: 12px; background-color: #EDF2F7; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0; font-size: 26px;">🔒 Your Pro Trial Has Expired</h1>
+            </div>
+            <div class="content">
+                <p>Hi {name},</p>
+                <p>Your 14-day AuditFlow Pro trial has ended, and your account has reverted to the Free plan. To keep using advanced features and access your previous data, you can upgrade your plan.</p>
+                
+                <div class="deal-box">
+                    <h3 style="color: #C53030; margin-top: 0; margin-bottom: 10px;">⏳ 30% OFF Upgrade Offer Still Active!</h3>
+                    <p style="margin: 0 0 15px; font-size: 15px;">We are keeping your 30% discount active for the next **3 days**. Don't miss out!</p>
+                    <p style="font-size: 24px; font-weight: bold; margin: 0; color: #2D3748;">$20.30 <span style="font-size: 15px; font-weight: normal; text-decoration: line-through; color: #A0AEC0;">$29.00</span></p>
+                </div>
+
+                <p style="text-align: center; margin: 35px 0 20px;">
+                    <a href="{FRONTEND_URL}/pricing" class="button" style="color: white; background: linear-gradient(135deg, #f857a6 0%, #ff5858 100%);">Upgrade with 30% Discount</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text = f"""
+    Your Pro Trial Has Expired
+    
+    Hi {name},
+    
+    Your 14-day AuditFlow Pro trial has ended and your account has reverted to the Free plan.
+    
+    To help you stay on Pro, your 30% discount remains active for the next 3 days!
+    Upgrade now for just $20.30 (normally $29.00).
+    
+    Claim discount: {FRONTEND_URL}/pricing
+    """
+    
+    send_email(user.email, "🔒 Your Pro Trial has expired — claim your 30% discount", html, text)
+
+
 if __name__ == "__main__":
     # Example usage
     send_verification_email("labcomvids@gmail.com", "123456")

@@ -83,12 +83,32 @@ class User(Base):
     embed_width = Column(String(100), default="100%")
     embed_shadow = Column(Boolean, default=True)
 
+
+
     # Onboarding checklist 
     ob_audit_done      = Column(Boolean, default=False)  # ran first audit
     ob_crawl_done      = Column(Boolean, default=False)  # ran first crawl
     ob_compare_done    = Column(Boolean, default=False)  # ran first comparison
     ob_tracking_done   = Column(Boolean, default=False)  # set up rank tracking
     ob_checklist_dismissed = Column(Boolean, default=False)  # user closed it
+
+    # Email sequence tracking (Stage 4)
+    # Timestamps for when each sequence email was sent (None = not sent yet)
+    email_seq_welcome_sent_at  = Column(DateTime, nullable=True)
+    email_seq_day1_sent_at     = Column(DateTime, nullable=True)
+    email_seq_day3_sent_at     = Column(DateTime, nullable=True)
+    email_seq_day7_sent_at     = Column(DateTime, nullable=True)
+    email_seq_day14_sent_at    = Column(DateTime, nullable=True)
+    email_seq_unsubscribed     = Column(Boolean, default=False)  # hard opt-out
+ 
+    # Email sequence (Stage 4)
+    seq_welcome_sent      = Column(Boolean, default=False)  # immediate on signup
+    seq_day1_sent         = Column(Boolean, default=False)  # Day 1: top 3 quick wins from audit
+    seq_day3_sent         = Column(Boolean, default=False)  # Day 3: competitor nudge
+    seq_day7_sent         = Column(Boolean, default=False)  # Day 7: rank tracking nudge
+    seq_day14_sent        = Column(Boolean, default=False)  # Day 14: upgrade nudge (free only)
+    seq_unsubscribed      = Column(Boolean, default=False)  # global unsubscribe flag
+    seq_unsubscribe_token = Column(String(64), unique=True, nullable=True, index=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -594,6 +614,9 @@ class PasswordResetToken(Base):
 
 
 class Visitor(Base):
+
+
+
     """Track landing page visitors for conversion analysis"""
     __tablename__ = "visitors"
     
@@ -623,3 +646,28 @@ class Visitor(Base):
     
     def __repr__(self):
         return f"<Visitor ip={self.ip_address} country={self.country} visited={self.visited_at}>"
+
+
+class EmailSequenceLog(Base):
+    """
+    One row per user per sequence slug.
+    Prevents double-sends regardless of how often the cron runs.
+    Also stores open/click tracking tokens so we can personalise
+    future emails based on engagement.
+    """
+    __tablename__ = "email_sequence_log"
+ 
+    id      = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+ 
+    # e.g.  "welcome" | "day_1" | "day_3" | "day_7" | "day_14"
+    sequence_slug = Column(String(50), nullable=False)
+ 
+    sent_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    subject   = Column(String(500), nullable=True)   # logged for debugging
+    opened_at = Column(DateTime, nullable=True)       # set by 1x1 pixel tracker
+    clicked_at = Column(DateTime, nullable=True)      # set by link-redirect tracker
+ 
+    # Unique constraint: one send per user per slug
+    # Enforced in application logic (and can be added as a DB unique index)
+    user = relationship("User")

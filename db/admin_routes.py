@@ -9,7 +9,7 @@ from typing import List
 from datetime import datetime, timedelta
 
 from .database import get_db
-from .models import User, Audit, Crawl, Comparison
+from .models import User, Audit, Crawl, Comparison, AnonymousAudit
 from .auth import get_current_user
 from .schemas import UserResponse, UserUpdate
 
@@ -70,6 +70,11 @@ async def get_admin_stats(
     recent_audits = db.query(Audit).filter(
         Audit.created_at >= thirty_days_ago
     ).count()
+
+    total_anon_audits = db.query(AnonymousAudit).count()
+    recent_anon_audits = db.query(AnonymousAudit).filter(
+            AnonymousAudit.created_at >= thirty_days_ago
+        ).count()
     
     total_crawls = db.query(Crawl).count()
     total_comparisons = db.query(Comparison).count()
@@ -91,6 +96,10 @@ async def get_admin_stats(
         "audits": {
             "total": total_audits,
             "this_month": recent_audits
+        },
+        "anonymous_audits": {
+            "total": total_anon_audits,
+            "this_month": recent_anon_audits
         },
         "features": {
             "crawls": total_crawls,

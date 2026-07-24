@@ -62,7 +62,7 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
     finally:
         db.close()
 
-def run_crawl_task(job_id: str, url: str, user_id: int, db_session):
+def run_crawl_task(job_id: str, url: str, user_id: int, db_session=None):
     """Background task for deep crawl (needs separate DB session)"""
     from db.database import SessionLocal
     db = SessionLocal()
