@@ -117,8 +117,8 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to start PDF generator: {e}")
         print(f"Failed to start PDF generator: {e}") 
 
-    import services.schedular as _sched
-    _scheduler = _sched.start(app)
+    # import services.schedular as _sched
+    # _scheduler = _sched.start(app)
 
     
     yield
@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
     # Shutdown: Clean up the browser pool
     # await pdf_gen.stop()
 
-    _scheduler.shutdown(wait=False) 
+    # _scheduler.shutdown(wait=False) 
     
     # Shutdown
     logger.info("🛑 Shutting down AuditFlow API...")
