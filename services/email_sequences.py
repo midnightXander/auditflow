@@ -32,7 +32,8 @@ from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
-
+from rq_app import queue
+from rq import Retry
 
 log = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ def _send_and_log(
     from email_service import send_email
     """Send the email and record it. Returns True if sent."""
     try:
-        send_email(email, subject, html, text)
+        queue.enqueue(send_email, email, subject, html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
         _mark_sent(slug, user_id, subject, db)
         print("Sent sequence email slug=%s user_id=%s", slug, user_id)
         log.info("Sent sequence email slug=%s user_id=%s", slug, user_id)

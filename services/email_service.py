@@ -16,8 +16,11 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@auditflow.com")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@outaudits.com")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+from rq_app import queue
+from rq import Retry
 
 
 def send_email(to_email: str, subject: str, html_content: str, text_content: Optional[str] = None):
@@ -60,6 +63,7 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
 
 
 def send_verification_email(email: str, token: str, user_name: Optional[str] = None):
+    
     """Send email verification link"""
     
     verify_url = f"{FRONTEND_URL}/verify-email?token={token}"
@@ -82,7 +86,7 @@ def send_verification_email(email: str, token: str, user_name: Optional[str] = N
     <body>
         <div class="container">
             <div class="header">
-                <h1>Welcome to AuditFlow!</h1>
+                <h1>Welcome to OutAudits!</h1>
             </div>
             <div class="content">
                 <p>Hi {name},</p>
@@ -100,7 +104,7 @@ def send_verification_email(email: str, token: str, user_name: Optional[str] = N
             </div>
             <div class="footer">
                 <p>If you didn't create an account, you can safely ignore this email.</p>
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -108,7 +112,7 @@ def send_verification_email(email: str, token: str, user_name: Optional[str] = N
     """
     
     text = f"""
-    Welcome to AuditFlow!
+    Welcome to OutAudits!
     
     Hi {name},
     
@@ -121,7 +125,7 @@ def send_verification_email(email: str, token: str, user_name: Optional[str] = N
     If you didn't create an account, you can safely ignore this email.
     """
     
-    send_email(email, "Verify your AuditFlow account", html, text)
+    queue.enqueue(send_email, email, "Verify your OutAudits account", html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_password_reset_email(email: str, token: str, user_name: Optional[str] = None):
@@ -166,7 +170,7 @@ def send_password_reset_email(email: str, token: str, user_name: Optional[str] =
             </div>
             <div class="footer">
                 <p>If you didn't request a password reset, you can safely ignore this email. Your password won't change.</p>
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -187,7 +191,7 @@ def send_password_reset_email(email: str, token: str, user_name: Optional[str] =
     If you didn't request a password reset, you can safely ignore this email.
     """
     
-    send_email(email, "Reset your AuditFlow password", html, text)
+    queue.enqueue(send_email, email, "Reset your OutAudits password", html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_audit_complete_email(email: str, audit_url: str, score: int, user_name: Optional[str] = None):
@@ -226,7 +230,7 @@ def send_audit_complete_email(email: str, audit_url: str, score: int, user_name:
                 </p>
             </div>
             <div class="footer">
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -245,7 +249,7 @@ def send_audit_complete_email(email: str, audit_url: str, score: int, user_name:
     View your full report: {audit_url}
     """
     
-    send_email(email, f"Your audit is ready! Score: {score}/100", html, text)
+    queue.enqueue(send_email, email, f"Your audit is ready! Score: {score}/100", html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_credits_low_email(email: str, credits_remaining: int, user_name: Optional[str] = None):
@@ -285,11 +289,7 @@ def send_credits_low_email(email: str, credits_remaining: int, user_name: Option
     </html>
     """
     
-    send_email(email, f"⚠️ Only {credits_remaining} credits remaining", html)
-
-
-
-    send_email(email, f"⚠️ Only {credits_remaining} credits remaining", html)
+    queue.enqueue(send_email, email, f"⚠️ Only {credits_remaining} credits remaining", html, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_trial_start_email(user):
@@ -319,7 +319,7 @@ def send_trial_start_email(user):
             </div>
             <div class="content">
                 <p>Hi {name},</p>
-                <p>Welcome to <strong>AuditFlow Pro</strong>! Your 14-day free trial is officially active, and we've added <strong>10,000 credits</strong> to your account.</p>
+                <p>Welcome to <strong>OutAudits Pro</strong>! Your 14-day free trial is officially active, and we've added <strong>10,000 credits</strong> to your account.</p>
                 
                 <h3 style="color: #1A202C; margin-top: 30px;">Here is what you can do with Pro:</h3>
                 <ul class="feature-list">
@@ -335,7 +335,7 @@ def send_trial_start_email(user):
             </div>
             <div class="footer">
                 <p>Your free trial ends on {user.trial_ends_at.strftime('%Y-%m-%d') if user.trial_ends_at else '14 days'}.</p>
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -347,7 +347,7 @@ def send_trial_start_email(user):
     
     Hi {name},
     
-    Welcome to AuditFlow Pro! Your 14-day free trial is active and we have added 10,000 credits to your account.
+    Welcome to OutAudits Pro! Your 14-day free trial is active and we have added 10,000 credits to your account.
     
     With Pro, you can access:
     - Deep Site Crawls (up to 500 pages)
@@ -358,7 +358,7 @@ def send_trial_start_email(user):
     Log in to start: {FRONTEND_URL}/dashboard
     """
     
-    send_email(user.email, "🚀 Your Pro 14-day Free Trial has started!", html, text)
+    queue.enqueue(send_email, user.email, "🚀 Your Pro 14-day Free Trial has started!", html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_trial_day3_email(user):
@@ -386,7 +386,7 @@ def send_trial_day3_email(user):
             </div>
             <div class="content">
                 <p>Hi {name},</p>
-                <p>You've been in your AuditFlow Pro trial for 3 days! We want to make sure you're getting the absolute most value out of your remaining credits.</p>
+                <p>You've been in your OutAudits Pro trial for 3 days! We want to make sure you're getting the absolute most value out of your remaining credits.</p>
                 
                 <div class="tip-box">
                     <h4 style="margin: 0 0 10px; color: #764ba2;">🔍 Tip #1: Setup Rank Tracking</h4>
@@ -403,7 +403,7 @@ def send_trial_day3_email(user):
                 </p>
             </div>
             <div class="footer">
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -415,7 +415,7 @@ def send_trial_day3_email(user):
     
     Hi {name},
     
-    Here are a couple of quick tips to make the most of your AuditFlow Pro trial:
+    Here are a couple of quick tips to make the most of your OutAudits Pro trial:
     
     1. Setup Rank Tracking: Monitor keyword positions daily across search engines.
     2. Run a Competitor Report: Compare your scores and metrics against up to 3 competitors.
@@ -423,7 +423,7 @@ def send_trial_day3_email(user):
     Launch a check here: {FRONTEND_URL}/dashboard
     """
     
-    send_email(user.email, "💡 Get the most out of your AuditFlow Pro Trial", html, text)
+    queue.enqueue(send_email, user.email, "💡 Get the most out of your OutAudits Pro Trial", html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
 
 
 def send_trial_day10_email(user):
@@ -453,7 +453,7 @@ def send_trial_day10_email(user):
             </div>
             <div class="content">
                 <p>Hi {name},</p>
-                <p>Your 14-day AuditFlow Pro trial will end in <strong>4 days</strong>. Don't lose access to your keyword histories and audit records!</p>
+                <p>Your 14-day OutAudits Pro trial will end in <strong>4 days</strong>. Don't lose access to your keyword histories and audit records!</p>
                 
                 <h3 style="color: #1A202C; margin-top: 30px;">Pro vs. Free Comparison:</h3>
                 <table class="plan-table">
@@ -493,7 +493,7 @@ def send_trial_day10_email(user):
                 </p>
             </div>
             <div class="footer">
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -505,7 +505,7 @@ def send_trial_day10_email(user):
     
     Hi {name},
     
-    Your 14-day AuditFlow Pro trial will end in 4 days.
+    Your 14-day OutAudits Pro trial will end in 4 days.
     
     Here is a quick overview of what you lose when you downgrade to Free:
     - Credits drop from 10,000 to just 20 per month.
@@ -516,7 +516,7 @@ def send_trial_day10_email(user):
     Lock in Pro plan today for $29/mo: {FRONTEND_URL}/pricing
     """
     
-    send_email(user.email, "⏳ 4 days left in your Pro Trial", html, text)
+    queue.enqueue(send_email, user.email, "⏳ 4 days left in your Pro Trial", html, text)
 
 
 def send_trial_expiring_email(user):
@@ -544,7 +544,7 @@ def send_trial_expiring_email(user):
             </div>
             <div class="content">
                 <p>Hi {name},</p>
-                <p>Your AuditFlow Pro trial expires in exactly <strong>24 hours</strong>. After expiration, your plan will automatically revert to the Free tier, and unused trial credits will be removed.</p>
+                <p>Your OutAudits Pro trial expires in exactly <strong>24 hours</strong>. After expiration, your plan will automatically revert to the Free tier, and unused trial credits will be removed.</p>
                 
                 <div class="deal-box">
                     <h3 style="color: #C53030; margin-top: 0; margin-bottom: 10px;">🎉 Exclusive 30% OFF Upgrade Deal</h3>
@@ -557,7 +557,7 @@ def send_trial_expiring_email(user):
                 </p>
             </div>
             <div class="footer">
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -569,7 +569,7 @@ def send_trial_expiring_email(user):
     
     Hi {name},
     
-    Your AuditFlow Pro trial expires in exactly 24 hours. Your plan will revert to the Free tier.
+    Your OutAudits Pro trial expires in exactly 24 hours. Your plan will revert to the Free tier.
     
     To help you stay on Pro, we are giving you an exclusive 30% OFF your first month!
     Upgrade now for just $20.30 (normally $29.00).
@@ -577,7 +577,7 @@ def send_trial_expiring_email(user):
     Claim discount: {FRONTEND_URL}/pricing
     """
     
-    send_email(user.email, "⚠️ Action Required: Your Pro Trial expires tomorrow!", html, text)
+    queue.enqueue(send_email, user.email, "⚠️ Action Required: Your Pro Trial expires tomorrow!", html, text)
 
 
 def send_trial_expired_email(user):
@@ -605,7 +605,7 @@ def send_trial_expired_email(user):
             </div>
             <div class="content">
                 <p>Hi {name},</p>
-                <p>Your 14-day AuditFlow Pro trial has ended, and your account has reverted to the Free plan. To keep using advanced features and access your previous data, you can upgrade your plan.</p>
+                <p>Your 14-day OutAudits Pro trial has ended, and your account has reverted to the Free plan. To keep using advanced features and access your previous data, you can upgrade your plan.</p>
                 
                 <div class="deal-box">
                     <h3 style="color: #C53030; margin-top: 0; margin-bottom: 10px;">⏳ 30% OFF Upgrade Offer Still Active!</h3>
@@ -618,7 +618,7 @@ def send_trial_expired_email(user):
                 </p>
             </div>
             <div class="footer">
-                <p>&copy; {datetime.now().year} AuditFlow. All rights reserved.</p>
+                <p>&copy; {datetime.now().year} OutAudits. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -630,7 +630,7 @@ def send_trial_expired_email(user):
     
     Hi {name},
     
-    Your 14-day AuditFlow Pro trial has ended and your account has reverted to the Free plan.
+    Your 14-day OutAudits Pro trial has ended and your account has reverted to the Free plan.
     
     To help you stay on Pro, your 30% discount remains active for the next 3 days!
     Upgrade now for just $20.30 (normally $29.00).
@@ -638,9 +638,10 @@ def send_trial_expired_email(user):
     Claim discount: {FRONTEND_URL}/pricing
     """
     
-    send_email(user.email, "🔒 Your Pro Trial has expired — claim your 30% discount", html, text)
+    queue.enqueue(send_email, user.email, "🔒 Your Pro Trial has expired — claim your 30% discount", html, text)
 
 
 if __name__ == "__main__":
+    
     # Example usage
-    send_verification_email("labcomvids@gmail.com", "123456")
+    send_verification_email("alexngaikama913@gmail.com", "123456")
