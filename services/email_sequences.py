@@ -50,15 +50,33 @@ YEAR      = datetime.now().year
 
 # ── Shared HTML primitives ────────────────────────────────────────────────────
 
+# def _logo_html() -> str:
+#     return f"""
+#     <div style="text-align:center;margin-bottom:8px;">
+#       <span style="display:inline-flex;align-items:center;gap:8px;">
+#         <span style="display:inline-block;width:28px;height:28px;background:{PRIMARY};
+#               border-radius:6px;text-align:center;line-height:28px;color:white;
+#               font-weight:900;font-size:14px;">A
+#         </span>
+#         <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+#             <rect width="28" height="28" rx="6" fill={PRIMARY} />
+#             <path d="M6 20 L11 12 L16 16 L21 8" stroke="white" strokeWidth="4"
+#             strokeLinecap="round" strokeLinejoin="round" />
+#             <circle cx="21" cy="8" r="3" fill={ACCENT} />
+#         </svg>
+#         <img src="{FRONTEND_URL}/logo2.svg" alt="OutAudits" />
+#         <span style="font-weight:900;margin-left:8px;font-size:16px;color:#111;letter-spacing:-0.3px;">
+#           OutAudits
+#         </span>
+#       </span>
+#     </div>"""
 def _logo_html() -> str:
     return f"""
     <div style="text-align:center;margin-bottom:8px;">
       <span style="display:inline-flex;align-items:center;gap:8px;">
-        <span style="display:inline-block;width:28px;height:28px;background:{PRIMARY};
-              border-radius:6px;text-align:center;line-height:28px;color:white;
-              font-weight:900;font-size:14px;">A</span>
-        <span style="font-weight:900;font-size:16px;color:#111;letter-spacing:-0.3px;">
-          OutAudits
+        <img src="{FRONTEND_URL}/logo2.svg" alt="OutAudits" style="width:28px;height:auto;" />
+        <span style="font-weight:900;margin-left:8px;font-size:16px;color:#111;letter-spacing:-0.3px;">
+           OutAudits
         </span>
       </span>
     </div>"""
@@ -193,10 +211,11 @@ def _send_and_log(
     text: str,
     db: Session,
 ) -> bool:
-    from email_service import send_email
+    from services.email_service import send_email
     """Send the email and record it. Returns True if sent."""
     try:
         queue.enqueue(send_email, email, subject, html, text, retry = Retry(max=3, interval=[10, 30, 60]) )
+        # send_email(email, subject, html, text)
         _mark_sent(slug, user_id, subject, db)
         print("Sent sequence email slug=%s user_id=%s", slug, user_id)
         log.info("Sent sequence email slug=%s user_id=%s", slug, user_id)
@@ -778,10 +797,13 @@ def process_sequences(db: Session) -> dict:
     Returns a summary dict for logging.
     """
     from db.models import User
+    print("processing emails")
 
     now = datetime.utcnow()
     summary = {"processed": 0, "sent": 0, "skipped": 0, "errors": 0}
 
+    # test_sent = _send_day1(1, "alexngaikama913@gmail.com", "Ngaikam Alex", db)
+    
     users: list[User] = (
         db.query(User)
         .filter(
@@ -792,6 +814,7 @@ def process_sequences(db: Session) -> dict:
     )
 
     for user in users:
+        print(user.email)
         summary["processed"] += 1
         age_days = (now - user.created_at).days
 

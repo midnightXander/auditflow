@@ -5,10 +5,14 @@ Email Service - Send verification, password reset, and notification emails
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 from typing import Optional
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+
+from rq_app import queue
+from rq import Retry
 
 load_dotenv()
 
@@ -16,11 +20,12 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@outaudits.com")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "info@outaudits.com")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-from rq_app import queue
-from rq import Retry
+
+# from rq_app import queue
+# from rq import Retry
 
 
 def send_email(to_email: str, subject: str, html_content: str, text_content: Optional[str] = None):
@@ -39,7 +44,8 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
     
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = FROM_EMAIL
+    msg['From'] = formataddr(("OutAudits Team", FROM_EMAIL))
+    msg['Sender'] = 'OutAudits'
     msg['To'] = to_email
     
     # Add text and HTML parts
@@ -64,6 +70,9 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
 
 def send_verification_email(email: str, token: str, user_name: Optional[str] = None):
     
+    
+
+
     """Send email verification link"""
     
     verify_url = f"{FRONTEND_URL}/verify-email?token={token}"
@@ -129,6 +138,7 @@ def send_verification_email(email: str, token: str, user_name: Optional[str] = N
 
 
 def send_password_reset_email(email: str, token: str, user_name: Optional[str] = None):
+    
     """Send password reset link"""
     
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
@@ -195,6 +205,7 @@ def send_password_reset_email(email: str, token: str, user_name: Optional[str] =
 
 
 def send_audit_complete_email(email: str, audit_url: str, score: int, user_name: Optional[str] = None):
+    
     """Send notification when audit is complete"""
     
     name = user_name or "there"
@@ -253,6 +264,7 @@ def send_audit_complete_email(email: str, audit_url: str, score: int, user_name:
 
 
 def send_credits_low_email(email: str, credits_remaining: int, user_name: Optional[str] = None):
+    
     """Send notification when credits are running low"""
     
     name = user_name or "there"
@@ -293,6 +305,7 @@ def send_credits_low_email(email: str, credits_remaining: int, user_name: Option
 
 
 def send_trial_start_email(user):
+    
     """Send email confirming start of 14-day Pro trial"""
     name = user.full_name or "there"
     
@@ -362,6 +375,7 @@ def send_trial_start_email(user):
 
 
 def send_trial_day3_email(user):
+    
     """Send Day 3 email explaining tips and features"""
     name = user.full_name or "there"
     
@@ -427,6 +441,7 @@ def send_trial_day3_email(user):
 
 
 def send_trial_day10_email(user):
+    
     """Send Day 10 upgrade reminder email"""
     name = user.full_name or "there"
     
@@ -520,6 +535,7 @@ def send_trial_day10_email(user):
 
 
 def send_trial_expiring_email(user):
+    
     """Send Day 13 expiring soon email (contains 30% discount offer)"""
     name = user.full_name or "there"
     
@@ -581,6 +597,7 @@ def send_trial_expiring_email(user):
 
 
 def send_trial_expired_email(user):
+    
     """Send Day 14 trial expired email"""
     name = user.full_name or "there"
     
