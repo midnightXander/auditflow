@@ -149,8 +149,8 @@ async def start_anon_audit(
     finally:
         db.close()
 
-    # background_tasks.add_task(run_anon_audit, token)
-    queue.enqueue(run_anon_audit, token, retry = Retry(max=3, interval=[10, 30, 60]) )
+    background_tasks.add_task(run_anon_audit, token)
+    # queue.enqueue(run_anon_audit, token, retry = Retry(max=3, interval=[10, 30, 60]) )
 
     return {"session_token": token, "status": "pending"}
 
