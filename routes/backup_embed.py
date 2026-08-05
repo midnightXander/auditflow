@@ -67,7 +67,7 @@ def darken_hex(hex_color: str, percent: float = 20) -> str:
 
 
 
-# @router.get("/widget.js")
+@router.get("/widget.js")
 async def get_widget_script(
     api_key: str,
     db: Session = Depends(get_db)
@@ -397,6 +397,15 @@ async def get_widget_script(
             <p class="af-description">${{CONFIG.descriptionText}}</p>
             
             <form id="af-form" class="af-form">
+              ${{CONFIG.leadCaptureEnabled && CONFIG.requireEmail ? `
+                <input 
+                  type="email" 
+                  id="af-email" 
+                  class="af-input" 
+                  placeholder="Your Email Address"
+                  required
+                />
+              ` : ''}}
               <input 
                 type="url" 
                 id="af-url" 
@@ -404,15 +413,6 @@ async def get_widget_script(
                 placeholder="Enter Your Website URL"
                 required
               />
-              ${{CONFIG.leadCaptureEnabled && CONFIG.requireEmail ? `
-                <input 
-                  type="email" 
-                  id="af-email" 
-                  class="af-input af-input--delayed" 
-                  placeholder="Your Email Address"
-                  required
-                />
-              ` : ''}}
               <button type="submit" class="af-button" id="af-submit">
                 ${{CONFIG.buttonText}}
               </button>
@@ -440,7 +440,6 @@ async def get_widget_script(
     const error = document.getElementById('af-error');
     const formContainer = document.getElementById('af-form-container');
     const resultsContainer = document.getElementById('af-results-container');
-    let lastEmail = '';
     
     form.addEventListener('submit', async (e) => {{
       e.preventDefault();
@@ -448,657 +447,6 @@ async def get_widget_script(
       const url = document.getElementById('af-url').value;
       const emailInput = document.getElementById('af-email');
       const email = emailInput ? emailInput.value : null;
-      lastEmail = email || lastEmail;
-      
-      // Show loading
-      form.style.display = 'none';
-      loading.style.display = 'block';
-      error.style.display = 'none';
-      
-      try {{
-        // Start audit
-        const response = await fetch(API_BASE + '/api/embed/audit', {{
-          method: 'POST',
-          headers: {{'Content-Type': 'application/json'}},
-          body: JSON.stringify({{
-            api_key: CONFIG.apiKey,
-            url: url,
-            email: email
-          }})
-        }});
-        
-        const data = await response.json();
-        
-        if (!response.ok) {{
-          throw new Error(data.detail || 'Audit failed');
-        }}
-        
-        // Poll for results
-        const jobId = data.job_id;
-        pollResults(jobId);
-        
-      }} catch (err) {{
-        error.textContent = err.message;
-        error.style.display = 'block';
-        form.style.display = 'flex';
-        loading.style.display = 'none';
-      }}
-    }});
-    
-    // Poll for audit results
-    const pollResults = async (jobId) => {{
-      const progressEl = document.getElementById('af-progress');
-      
-      const poll = async () => {{
-        try {{
-          const response = await fetch(API_BASE + `/api/embed/status/${{jobId}}?api_key=${{CONFIG.apiKey}}`);
-          const data = await response.json();
-          
-          if (data.status === 'completed') {{
-            // Fetch and display results in-widget
-            const resultsResponse = await fetch(API_BASE + `/api/embed/results-data/${{jobId}}?api_key=${{CONFIG.apiKey}}`);
-            const resultsData = await resultsResponse.json();
-            displayResults(resultsData, jobId);
-          }} else if (data.status === 'failed') {{
-            throw new Error('Audit failed. Please try again.');
-          }} else {{
-            progressEl.textContent = data.current_status || 'Analyzing your website...';
-            setTimeout(poll, 2000);
-          }}
-        }} catch (err) {{
-          error.textContent = err.message;
-          error.style.display = 'block';
-          form.style.display = 'flex';
-          loading.style.display = 'none';
-        }}
-      }};
-      
-      poll();
-    }};
-    
-    // Display results in-widget
-    const displayResults = (resultsData, jobId) => {{
-      loading.style.display = 'none';
-      formContainer.style.display = 'none';
-      resultsContainer.style.display = 'block';
-      
-      const results = resultsData.results;
-      const score = results.overall_score || 0;
-      
-      // Build score list HTML
-      let categoriesHtml = '';
-      const categories = [
-        {{ key: 'performance', title: 'Performance' }},
-        {{ key: 'accessibility', title: 'Accessibility' }},
-        {{ key: 'seo', title: 'SEO' }}
-      ];
-      
-      categories.forEach(cat => {{
-        const categoryScore = results.lighthouse?.categories?.[cat.key]?.score || 0;
-        categoriesHtml += `
-          <div class="af-score-item">
-            <div class="af-score-item-label">
-              <span>${{cat.title}}</span>
-              <span>${{Math.round(categoryScore)}}</span>
-            </div>
-            <div class="af-score-bar-track">
-              <div class="af-score-bar-fill" style="width: ${{Math.round(categoryScore)}}%;"></div>
-            </div>
-          </div>
-        `;
-      }});
-      
-      // Build checks grid
-      let checksHtml = '';
-      const checks = [
-        {{ key: 'https', title: 'HTTPS' }},
-        {{ key: 'title_tag', title: 'Title Tag' }},
-        {{ key: 'meta_description', title: 'Meta Description' }},
-        {{ key: 'robots_txt', title: 'Robots.txt' }},
-        {{ key: 'sitemap_xml', title: 'Sitemap.xml' }},
-        {{ key: 'canonical', title: 'Canonical Tag' }}
-      ];
-      
-      checks.forEach(check => {{
-        const passed = results.security?.https || results.technical_seo?.[check.key];
-        const status = passed ? 'pass' : 'fail';
-        const icon = passed ? '✓' : '✕';
-        checksHtml += `
-          <div class="af-check ${{status}}">
-            <span class="af-check-icon">${{icon}}</span>
-            <span>${{check.title}}</span>
-          </div>
-        `;
-      }});
-      
-      resultsContainer.innerHTML = `
-        <div class="af-results">
-          <div class="af-results-header">
-            <h2 class="af-headline">Your SEO Audit Results</h2>
-            <p class="af-results-url">${{resultsData.url}}</p>
-          </div>
-          
-          <div class="af-results-top">
-            <div>
-              <div class="af-audit-domain-label">Audited Domain</div>
-              <div class="af-audit-domain">${{resultsData.url}}</div>
-            </div>
-            <div class="af-score-summary">
-              <div class="af-score-summary-label">Overall SEO Score</div>
-              <div class="af-score-summary-number">${{Math.round(score)}}</div>
-            </div>
-          </div>
-          
-          <div class="af-score-list">
-            ${{categoriesHtml}}
-          </div>
-          
-          <div class="af-checks-section">
-            <h3 class="af-checks-title">All Checks at a Glance</h3>
-            <div class="af-checks-grid">
-              ${{checksHtml}}
-            </div>
-          </div>
-          
-          <div class="af-cta-section">
-            <div class="af-button-group">
-              <button type="button" id="af-retry-button" class="af-button-secondary">
-                Audit another website
-              </button>
-            </div>
-          </div>
-          <p class="af-results-footer">Full report will be sent to ${{lastEmail || 'your email'}}</p>
-        </div>
-      `;
-      
-      const retryButton = document.getElementById('af-retry-button');
-      if (retryButton) {{
-        retryButton.addEventListener('click', () => {{
-          resultsContainer.style.display = 'none';
-          form.style.display = 'flex';
-          formContainer.style.display = 'block';
-        }});
-      }}
-    }};
-  }};
-  
-  // Initialize widget when DOM is ready
-  if (document.readyState === 'loading') {{
-    document.addEventListener('DOMContentLoaded', createWidget);
-  }} else {{
-    createWidget();
-  }}
-}})();
-"""
-    
-    return HTMLResponse(content=widget_js, media_type="application/javascript")
-
-@router.get("/widget.js")
-async def get_widget_script2(
-    api_key: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Get embeddable widget JavaScript with modern UI
-    
-    Usage:
-    <script src="https://api.auditflow.com/api/embed/widget.js?api_key=YOUR_KEY"></script>
-    <div id="auditflow-widget"></div>
-    """
-    
-    # Verify API key and get agency settings
-    user = db.query(User).filter(User.embed_api_key == api_key).first()
-    
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    # Generate widget configuration
-    print(user.embed_border_radius)
-    API_BASE = os.getenv("BACKEND_URL","http://localhost:8000")
-    config = {
-        "apiKey": api_key,
-        "agencyName": user.agency_name or "OutAudits",
-        "accentColor": user.embed_primary_color or "#1F2937",
-        "bgColor": user.embed_bg_color,
-        "textColor": user.embed_text_color,
-        "showPoweredBy" : 'true' if user.embed_show_poweredBy else '',
-        "logo": user.agency_logo or "None",
-        "inputBgColor": lighten_hex(user.embed_bg_color),
-        "borderRadius": user.embed_border_radius,
-        "leadCaptureEnabled": 'true' if user.embed_lead_capture else '',
-        "requireEmail": 'true' if user.embed_require_email else "",
-        "buttonText": user.embed_button_text or "Analyze Website",
-        "headlineText": user.embed_headline or "Free Website SEO Audit",
-        "descriptionText": user.embed_description or "Get a comprehensive SEO analysis in seconds",
-    }
-    
-    
-    # Widget JavaScript template with modern UI and in-widget results
-    widget_js = f"""
-(function() {{
-  const CONFIG = {config};
-  const API_BASE = '{API_BASE}';
-  
-  // Get origin for CORS
-  const getApiBase = () => {{
-    try {{
-      return new URL(document.currentScript?.src || '').origin.replace('/api/embed/widget.js', '');
-    }} catch (e) {{
-      return API_BASE;
-    }}
-  }};
-  console.log(getApiBase())
-  
-  // Create widget container
-  const createWidget = () => {{
-    const container = document.getElementById('auditflow-widget');
-    if (!container) {{
-      console.error('Outaudits: Container #auditflow-widget not found');
-      return;
-    }}
-    
-    // Inject styles with modern minimalist design
-    const style = document.createElement('style');
-    style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-      .af-widget {{
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        max-width: 700px;
-        margin: 0 auto;
-        padding: 32px 20px;
-      }}
-      .af-card {{
-        background: ${{CONFIG.bgColor}};
-        border-radius: ${{CONFIG.borderRadius}}px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        padding: 40px;
-        text-align: left;
-      }}
-      .af-logo {{
-        height: 40px;
-        width: auto;
-        margin-bottom: 24px;
-        display: block;
-      }}
-      .af-headline {{
-        font-size: 24px;
-        font-weight: 700;
-        color: ${{CONFIG.textColor}};
-        margin-bottom: 8px;
-        letter-spacing: -0.5px;
-      }}
-      .af-description {{
-        font-size: 15px;
-        color: #6b7280;
-        margin-bottom: 32px;
-        line-height: 1.6;
-      }}
-      .af-poweredBy {{
-        margin-top: 16px;
-        color: #9ca3af;
-        font-size: 13px;
-        text-align: center;
-      }}
-      .af-poweredBy a {{
-        color: #6b7280;
-        text-decoration: none;
-      }}
-      .af-form {{
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }}
-      .af-step {{
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        transition: opacity 0.3s ease, transform 0.3s ease;
-      }}
-      .af-input {{
-        padding: 14px 16px;
-        border-radius: ${{CONFIG.borderRadius}}px;
-        font-size: 15px;
-        transition: all 0.2s;
-        font-family: inherit;
-        border: 1px solid #e5e7eb;
-        color: ${{CONFIG.textColor}};
-        background: ${{CONFIG.inputBgColor}};
-        width: 100%;
-        box-sizing: border-box;
-      }}
-      .af-input:focus {{
-        outline: none;
-        border-color: ${{CONFIG.accentColor}};
-        background: white;
-        box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.1);
-      }}
-      .af-button {{
-        padding: 14px 24px;
-        background: ${{CONFIG.accentColor}};
-        color: white;
-        border: none;
-        border-radius: ${{CONFIG.borderRadius}}px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-family: inherit;
-        width: 100%;
-      }}
-      .af-button:hover {{
-        opacity: 0.9;
-        transform: translateY(-1px);
-      }}
-      .af-button-secondary {{
-        background: transparent;
-        border: 1px solid #e5e7eb;
-        color: ${{CONFIG.textColor}};
-      }}
-      .af-button-secondary:hover {{
-        background: #f9fafb;
-      }}
-      .af-loading {{
-        margin-top: 32px;
-        text-align: center;
-      }}
-      .af-spinner {{
-        border: 3px solid #f3f4f6;
-        border-top: 3px solid ${{CONFIG.accentColor}};
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin: 0 auto;
-      }}
-      @keyframes spin {{
-        0% {{ transform: rotate(0deg); }}
-        100% {{ transform: rotate(360deg); }}
-      }}
-      .af-progress {{
-        margin-top: 16px;
-        font-size: 15px;
-        color: #6b7280;
-        font-weight: 500;
-      }}
-      .af-error {{
-        background: #fef2f2;
-        color: #991b1b;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-top: 16px;
-        border: 1px solid #fecaca;
-        font-size: 14px;
-      }}
-      
-      /* Results Styles */
-      .af-results {{
-        animation: slideUp 0.4s ease-out;
-      }}
-      @keyframes slideUp {{
-        from {{ opacity: 0; transform: translateY(20px); }}
-        to {{ opacity: 1; transform: translateY(0); }}
-      }}
-      .af-results-top-card {{
-        display: flex;
-        align-items: center;
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 32px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-      }}
-      .af-score-circle-small {{
-        position: relative;
-        width: 64px;
-        height: 64px;
-        margin-right: 24px;
-        flex-shrink: 0;
-      }}
-      .af-score-circle-small svg {{
-        transform: rotate(-90deg);
-        width: 64px;
-        height: 64px;
-      }}
-      .af-score-number-small {{
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 20px;
-        font-weight: 700;
-      }}
-      .af-results-domain-info {{
-        flex-grow: 1;
-      }}
-      .af-results-domain {{
-        font-size: 20px;
-        font-weight: 700;
-        color: ${{CONFIG.textColor}};
-        margin-bottom: 8px;
-      }}
-      .af-results-tags {{
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }}
-      .af-tag {{
-        font-size: 12px;
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-weight: 500;
-      }}
-      .af-tag-blue {{ background: #e0f2fe; color: #0369a1; }}
-      .af-tag-red {{ background: #fee2e2; color: #b91c1c; }}
-      .af-tag-yellow {{ background: #fef3c7; color: #b45309; }}
-      .af-tag-green {{ background: #d1fae5; color: #047857; }}
-      
-      .af-section-title {{
-        font-size: 14px;
-        font-weight: 600;
-        color: #6b7280;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 16px;
-        border-bottom: 1px solid #e5e7eb;
-        padding-bottom: 8px;
-      }}
-      
-      .af-category-row {{
-        display: flex;
-        align-items: center;
-        margin-bottom: 16px;
-      }}
-      .af-category-name {{
-        width: 120px;
-        font-size: 14px;
-        font-weight: 500;
-        color: ${{CONFIG.textColor}};
-      }}
-      .af-category-bar-bg {{
-        flex-grow: 1;
-        height: 8px;
-        background: #f3f4f6;
-        border-radius: 4px;
-        margin: 0 16px;
-        overflow: hidden;
-      }}
-      .af-category-bar-fill {{
-        height: 100%;
-        border-radius: 4px;
-        transition: width 1s ease-out;
-      }}
-      .af-category-score-text {{
-        width: 40px;
-        text-align: right;
-        font-size: 14px;
-        font-weight: 700;
-      }}
-      
-      .af-issue-row {{
-        display: flex;
-        align-items: center;
-        margin-bottom: 12px;
-        background: #f9fafb;
-        padding: 12px;
-        border-radius: 8px;
-        border: 1px solid #f3f4f6;
-      }}
-      .af-issue-icon {{
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        font-weight: bold;
-        margin-right: 12px;
-        flex-shrink: 0;
-      }}
-      .af-issue-text {{
-        font-size: 14px;
-        color: ${{CONFIG.textColor}};
-        font-weight: 500;
-      }}
-      
-      .af-results-footer {{
-        margin-top: 32px;
-        padding-top: 24px;
-        border-top: 1px solid #e5e7eb;
-        text-align: center;
-        font-size: 14px;
-        color: #6b7280;
-      }}
-    `;
-    document.head.appendChild(style);
-    
-    // Render widget HTML
-    container.innerHTML = `
-      <div class="af-widget">
-        <div class="af-card">
-          <div id="af-form-container">
-            ${{CONFIG.logo && CONFIG.logo !== 'None' ? `<img src="${{CONFIG.logo}}" alt="${{CONFIG.agencyName}}" class="af-logo">` : ''}}
-            <h1 class="af-headline">${{CONFIG.headlineText}}</h1>
-            <p class="af-description">${{CONFIG.descriptionText}}</p>
-            
-            <form id="af-form" class="af-form">
-              ${{CONFIG.leadCaptureEnabled && CONFIG.requireEmail ? `
-                <div id="af-step-1" class="af-step">
-                  <input 
-                    type="url" 
-                    id="af-url" 
-                    class="af-input" 
-                    placeholder="Enter Your Website URL"
-                    required
-                  />
-                  <button type="button" class="af-button" id="af-next-btn">
-                    Next Step &rarr;
-                  </button>
-                </div>
-                <div id="af-step-2" class="af-step" style="display: none; opacity: 0; transform: translateY(10px);">
-                  <input 
-                    type="email" 
-                    id="af-email" 
-                    class="af-input" 
-                    placeholder="Your Email Address"
-                    required
-                  />
-                  <button type="submit" class="af-button" id="af-submit">
-                    ${{CONFIG.buttonText}}
-                  </button>
-                  <button type="button" class="af-button af-button-secondary" id="af-back-btn" style="padding: 10px; margin-top: -4px;">
-                    &larr; Back
-                  </button>
-                </div>
-              ` : `
-                <div class="af-step">
-                  <input 
-                    type="url" 
-                    id="af-url" 
-                    class="af-input" 
-                    placeholder="Enter Your Website URL"
-                    required
-                  />
-                  <button type="submit" class="af-button" id="af-submit">
-                    ${{CONFIG.buttonText}}
-                  </button>
-                </div>
-              `}}
-              ${{CONFIG.showPoweredBy ? `<p class="af-poweredBy">
-                              Powered by <a href="https://outaudits.com" target="_blank" rel="noopener noreferrer">outaudits</a>
-                            </p>` : ''}}
-            </form>
-            
-            <div id="af-loading" class="af-loading" style="display: none;">
-              <div class="af-spinner"></div>
-              <div class="af-progress" id="af-progress">Analyzing your website...</div>
-            </div>
-            
-            <div id="af-error" class="af-error" style="display: none;"></div>
-          </div>
-          
-          <div id="af-results-container" style="display: none;"></div>
-        </div>
-      </div>
-    `;
-    
-    // Form submission handler
-    const form = document.getElementById('af-form');
-    const loading = document.getElementById('af-loading');
-    const error = document.getElementById('af-error');
-    const formContainer = document.getElementById('af-form-container');
-    const resultsContainer = document.getElementById('af-results-container');
-    
-    // Step navigation
-    const nextBtn = document.getElementById('af-next-btn');
-    const backBtn = document.getElementById('af-back-btn');
-    const step1 = document.getElementById('af-step-1');
-    const step2 = document.getElementById('af-step-2');
-    const urlInput = document.getElementById('af-url');
-    
-    if (nextBtn && step1 && step2) {{
-      nextBtn.addEventListener('click', () => {{
-        if (urlInput.checkValidity()) {{
-          step1.style.opacity = '0';
-          step1.style.transform = 'translateY(-10px)';
-          setTimeout(() => {{
-            step1.style.display = 'none';
-            step2.style.display = 'flex';
-            // Force reflow
-            void step2.offsetWidth;
-            step2.style.opacity = '1';
-            step2.style.transform = 'translateY(0)';
-            document.getElementById('af-email').focus();
-          }}, 300);
-        }} else {{
-          urlInput.reportValidity();
-        }}
-      }});
-      
-      backBtn.addEventListener('click', () => {{
-        step2.style.opacity = '0';
-        step2.style.transform = 'translateY(10px)';
-        setTimeout(() => {{
-          step2.style.display = 'none';
-          step1.style.display = 'flex';
-          // Force reflow
-          void step1.offsetWidth;
-          step1.style.opacity = '1';
-          step1.style.transform = 'translateY(0)';
-        }}, 300);
-      }});
-    }}
-    
-    let lastEmail = '';
-    
-    form.addEventListener('submit', async (e) => {{
-      e.preventDefault();
-      
-      const url = urlInput ? urlInput.value : '';
-      const emailInput = document.getElementById('af-email');
-      const email = emailInput ? emailInput.value : null;
-      lastEmail = email || lastEmail;
       
       // Show loading
       form.style.display = 'none';
@@ -1190,15 +538,12 @@ async def get_widget_script2(
       ];
       
       categories.forEach(cat => {{
-        const catScore = results.lighthouse?.categories?.[cat.key]?.score || 0;
-        const color = getScoreClass(catScore);
+        const score = results.lighthouse?.categories?.[cat.key]?.score || 0;
+        const scoreClass = getScoreColor(score);
         categoriesHtml += `
-          <div class="af-category-row">
+          <div class="af-category-card">
             <div class="af-category-name">${{cat.title}}</div>
-            <div class="af-category-bar-bg">
-              <div class="af-category-bar-fill" style="width: ${{Math.round(catScore)}}%; background: ${{color}};"></div>
-            </div>
-            <div class="af-category-score-text" style="color: ${{color}}">${{Math.round(catScore)}}%</div>
+            <div class="af-category-score ${{scoreClass}}">${{Math.round(score)}}</div>
           </div>
         `;
       }});
@@ -1206,78 +551,626 @@ async def get_widget_script2(
       // Build checks grid
       let checksHtml = '';
       const checks = [
-        {{ key: 'https', title: 'HTTPS Enabled', type: 'security' }},
-        {{ key: 'title_tag', title: 'Title Tag', type: 'technical_seo' }},
-        {{ key: 'meta_description', title: 'Meta Description', type: 'technical_seo' }},
-        {{ key: 'robots_txt', title: 'Robots.txt', type: 'technical_seo' }},
-        {{ key: 'sitemap_xml', title: 'Sitemap.xml', type: 'technical_seo' }},
-        {{ key: 'canonical', title: 'Canonical Tag', type: 'technical_seo' }}
+        {{ key: 'https', title: 'HTTPS' }},
+        {{ key: 'title_tag', title: 'Title Tag' }},
+        {{ key: 'meta_description', title: 'Meta Description' }},
+        {{ key: 'robots_txt', title: 'Robots.txt' }},
+        {{ key: 'sitemap_xml', title: 'Sitemap.xml' }},
+        {{ key: 'canonical', title: 'Canonical Tag' }}
       ];
       
-      let failedCount = 0;
-      
       checks.forEach(check => {{
-        let passed = false;
-        if (check.type === 'security') passed = results.security?.[check.key];
-        else passed = results.technical_seo?.[check.key];
-        
-        if (!passed) failedCount++;
-        
-        const iconBg = passed ? '#d1fae5' : '#fee2e2';
-        const iconColor = passed ? '#059669' : '#dc2626';
+        const passed = results.security?.https || results.technical_seo?.[check.key];
+        const status = passed ? 'pass' : 'fail';
         const icon = passed ? '✓' : '✕';
-        const text = passed ? `Valid ${{check.title}}` : `Missing ${{check.title}}`;
-        
         checksHtml += `
-          <div class="af-issue-row">
-            <div class="af-issue-icon" style="background: ${{iconBg}}; color: ${{iconColor}}">${{icon}}</div>
-            <div class="af-issue-text">${{text}}</div>
+          <div class="af-check ${{status}}">
+            <span class="af-check-icon">${{icon}}</span>
+            <span>${{check.title}}</span>
           </div>
         `;
       }});
       
-      const passedCount = checks.length - failedCount;
-      let domain = '';
-      try {{
-        domain = new URL(resultsData.url).hostname.replace('www.','');
-      }} catch (e) {{
-        domain = resultsData.url;
-      }}
-      
       resultsContainer.innerHTML = `
-        <div class="af-results">  
-          <div class="af-results-top-card">
-            <div class="af-score-circle-small">
-              <svg viewBox="0 0 100 100" width="64" height="64">
-                <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" stroke-width="8"/>
-                <circle cx="50" cy="50" r="45" fill="none" stroke="${{getScoreClass(score)}}" stroke-width="8"
-                  stroke-dasharray="${{282.74 * score / 100}} 282.74" stroke-linecap="round"/>
-              </svg>
-              <div class="af-score-number-small" style="color: ${{getScoreClass(score)}}">${{Math.round(score)}}</div>
-            </div>
-            <div class="af-results-domain-info">
-              <div class="af-results-domain">${{domain}}</div>
-              <div class="af-results-tags">
-                <span class="af-tag af-tag-red">${{failedCount}} issues</span>
-                <span class="af-tag af-tag-green">${{passedCount}} passed</span>
-              </div>
-            </div>
+        <div class="af-results">
+          <div class="af-results-header">
+            <h2 class="af-headline">Your SEO Audit Results</h2>
+            <p class="af-results-url">${{resultsData.url}}</p>
           </div>
           
-          <div class="af-section-title">SEO Score Breakdown</div>
-          <div style="margin-bottom: 32px;">
+          <div style="text-align: center; margin-bottom: 32px;">
+            <div class="af-score-circle">
+              <svg viewBox="0 0 200 200" width="140" height="140">
+                <circle cx="100" cy="100" r="90" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+                <circle cx="100" cy="100" r="90" fill="none" stroke="${{getScoreClass(score)}}" stroke-width="8"
+                  stroke-dasharray="${{565.48 * score / 100}} 565.48" stroke-linecap="round"/>
+              </svg>
+              <div class="af-score-number">${{Math.round(score)}}</div>
+            </div>
+            <p class="af-score-label">Overall SEO Score</p>
+          </div>
+          
+          <div class="af-categories-grid">
             ${{categoriesHtml}}
           </div>
           
-          <div class="af-section-title">Issues Found</div>
-          <div>
-            ${{checksHtml}}
+          <div class="af-checks-section">
+            <h3 class="af-checks-title">All Checks at a Glance</h3>
+            <div class="af-checks-grid">
+              ${{checksHtml}}
+            </div>
           </div>
           
-          <div class="af-results-footer">
-            Full report sent to:<br/>
-            <span style="color: ${{CONFIG.accentColor}}; font-weight: 600; font-size: 15px; margin-top: 8px; display: inline-block;">${{lastEmail || 'your email address'}}</span>
-            <div style="margin-top: 8px; font-size: 13px;">Check your inbox for the complete audit report with actionable recommendations.</div>
+          <div class="af-cta-section">
+            <p class="af-cta-text">Ready to improve your SEO?</p>
+            <div class="af-button-group">
+              <button onclick="window.open('${{resultsData.agency_url || '#'}}', '_blank')" class="af-button">
+                Get Started
+              </button>
+              <button onclick="fetch(API_BASE + '/api/embed/download/${{jobId}}?api_key=${{CONFIG.apiKey}}').then(r => r.blob()).then(b => {{ const url = window.URL.createObjectURL(b); const a = document.createElement('a'); a.href = url; a.download = 'audit-report.pdf'; a.click(); }});" class="af-button-secondary">
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }};
+  }};
+  
+  // Initialize widget when DOM is ready
+  if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', createWidget);
+  }} else {{
+    createWidget();
+  }}
+}})();
+"""
+    
+    return HTMLResponse(content=widget_js, media_type="application/javascript")
+
+async def get_widget_script2(
+    api_key: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get embeddable widget JavaScript with modern UI
+    
+    Usage:
+    <script src="https://api.auditflow.com/api/embed/widget.js?api_key=YOUR_KEY"></script>
+    <div id="auditflow-widget"></div>
+    """
+    
+    # Verify API key and get agency settings
+    user = db.query(User).filter(User.embed_api_key == api_key).first()
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # Generate widget configuration
+    print(user.embed_border_radius)
+    API_BASE = os.getenv("BACKEND_URL","http://localhost:8000")
+    config = {
+        "apiKey": api_key,
+        "agencyName": user.agency_name or "OutAudits",
+        "accentColor": user.embed_primary_color or "#1F2937",
+        "bgColor": user.embed_bg_color,
+        "textColor": user.embed_text_color,
+        "showPoweredBy" : 'true' if user.embed_show_poweredBy else '',
+        "logo": user.agency_logo or "None",
+        "inputBgColor": lighten_hex(user.embed_bg_color),
+        "borderRadius": user.embed_border_radius,
+        "leadCaptureEnabled": 'true' if user.embed_lead_capture else '',
+        "requireEmail": 'true' if user.embed_require_email else "",
+        "buttonText": user.embed_button_text or "Analyze Website",
+        "headlineText": user.embed_headline or "Free Website SEO Audit",
+        "descriptionText": user.embed_description or "Get a comprehensive SEO analysis in seconds",
+    }
+    
+    
+    # Widget JavaScript template with modern UI and in-widget results
+    widget_js = f"""
+(function() {{
+  const CONFIG = {config};
+  const API_BASE = '{API_BASE}';
+  
+  // Get origin for CORS
+  const getApiBase = () => {{
+    try {{
+      return new URL(document.currentScript?.src || '').origin.replace('/api/embed/widget.js', '');
+    }} catch (e) {{
+      return API_BASE;
+    }}
+  }};
+  console.log(getApiBase())
+  
+  // Create widget container
+  const createWidget = () => {{
+    const container = document.getElementById('auditflow-widget');
+    if (!container) {{
+      console.error('AuditFlow: Container #auditflow-widget not found');
+      return;
+    }}
+    
+    // Inject styles with modern minimalist design
+    const style = document.createElement('style');
+    style.textContent = `
+      .af-widget {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 32px 20px;
+      }}
+      .af-card {{
+        background: ${{CONFIG.bgColor}};
+        border-radius: ${{CONFIG.borderRadius}}px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 10px 40px rgba(0,0,0,0.08);
+        padding: 48px 32px;
+        text-align: center;
+      }}
+      .af-logo {{
+        width: 100px;
+        height: auto;
+        margin: 0 auto;
+        margin-bottom: 24px;
+      }}
+      .af-headline {{
+        font-size: 28px;
+        font-weight: 700;
+        color: ${{CONFIG.textColor}};
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+      }}
+      .af-description {{
+        font-size: 15px;
+        color: #6b7280;
+        margin-bottom: 32px;
+        line-height: 1.6;
+      }}
+      .af-poweredBy{{
+        margin-top: 13px;
+        color: #6b7280;
+        font-size: 15px;
+      }}
+      .af-form {{
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }}
+      .af-input {{
+        padding: 12px 16px;
+        border-radius: ${{CONFIG.borderRadius}}px;
+        font-size: 15px;
+        transition: all 0.2s;
+        font-family: inherit;
+        border: 1px solid #e4e9ed;
+        color: ${{CONFIG.textColor}};
+        background: ${{CONFIG.inputBgColor}};
+      }}
+      .af-input:focus {{
+        outline: none;
+        border-color: ${{CONFIG.accentColor}};
+        background: white;
+        box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.1);
+      }}
+      .af-button {{
+        padding: 12px 24px;
+        background: ${{CONFIG.accentColor}};
+        color: white;
+        border: none;
+        border-radius: ${{CONFIG.borderRadius}}px;;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+      }}
+      .af-button:hover {{
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }}
+      .af-button:disabled {{
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }}
+      .af-loading {{
+        margin-top: 24px;
+        text-align: center;
+      }}
+      .af-spinner {{
+        border: 3px solid #e5e7eb;
+        border-top: 3px solid ${{CONFIG.accentColor}};
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }}
+      @keyframes spin {{
+        0% {{ transform: rotate(0deg); }}
+        100% {{ transform: rotate(360deg); }}
+      }}
+      .af-progress {{
+        margin-top: 12px;
+        font-size: 14px;
+        color: #6b7280;
+      }}
+      .af-error {{
+        background: #fef2f2;
+        color: #991b1b;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-top: 16px;
+        border: 1px solid #fecaca;
+        font-size: 14px;
+      }}
+      
+      /* Results Styles */
+      .af-results {{
+        animation: slideUp 0.3s ease-out;
+      }}
+      @keyframes slideUp {{
+        from {{ opacity: 0; transform: translateY(20px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+      }}
+      .af-results-header {{
+        text-align: center;
+        margin-bottom: 32px;
+      }}
+      .af-results-url {{
+        font-size: 14px;
+        color: #6b7280;
+        margin-top: 8px;
+      }}
+      .af-score-circle {{
+        width: 140px;
+        height: 140px;
+        margin: 0 auto 24px;
+        position: relative;
+      }}
+      .af-score-circle svg {{
+        transform: rotate(-90deg);
+      }}
+      .af-score-number {{
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 48px;
+        font-weight: 700;
+        color: #1f2937;
+      }}
+      .af-score-label {{
+        font-size: 13px;
+        color: #6b7280;
+        margin-top: 8px;
+      }}
+      .af-categories-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 12px;
+        margin-bottom: 32px;
+      }}
+      .af-category-card {{
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: center;
+        transition: all 0.2s;
+      }}
+      .af-category-card:hover {{
+        border-color: ${{CONFIG.accentColor}};
+        box-shadow: 0 4px 12px rgba(31, 41, 55, 0.1);
+      }}
+      .af-category-name {{
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 8px;
+        font-weight: 500;
+      }}
+      .af-category-score {{
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+      }}
+      .af-category-score.good {{ color: #059669; }}
+      .af-category-score.warning {{ color: #f59e0b; }}
+      .af-category-score.poor {{ color: #dc2626; }}
+      
+      .af-checks-section {{
+        text-align: left;
+        margin-bottom: 32px;
+      }}
+      .af-checks-title {{
+        font-size: 16px;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 16px;
+      }}
+      .af-checks-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }}
+      .af-check {{
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }}
+      .af-check.pass {{
+        background: #d1fae5;
+        color: #065f46;
+      }}
+      .af-check.fail {{
+        background: #fee2e2;
+        color: #7f1d1d;
+      }}
+      .af-check-icon {{
+        font-size: 16px;
+      }}
+      
+      .af-cta-section {{
+        border-top: 1px solid #e5e7eb;
+        padding-top: 24px;
+        margin-top: 32px;
+      }}
+      .af-cta-text {{
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 16px;
+      }}
+      .af-button-group {{
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }}
+      .af-button-secondary {{
+        padding: 10px 20px;
+        background: white;
+        border: 1px solid #d1d5db;
+        color: #374151;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }}
+      .af-button-secondary:hover {{
+        background: #f9fafb;
+      }}
+    `;
+    document.head.appendChild(style);
+    
+    // Render widget HTML
+    container.innerHTML = `
+      <div class="af-widget">
+        <div class="af-card">
+          <div id="af-form-container">
+            ${{CONFIG.logo ? `<img src="${{CONFIG.logo}}" alt="${{CONFIG.agencyName}}" class="af-logo">` : ''}}
+            <h1 class="af-headline">${{CONFIG.headlineText}}</h1>
+            <p class="af-description">${{CONFIG.descriptionText}}</p>
+            
+            <form id="af-form" class="af-form">
+              ${{CONFIG.leadCaptureEnabled && CONFIG.requireEmail ? `
+                <input 
+                  type="email" 
+                  id="af-email" 
+                  class="af-input" 
+                  placeholder="Your Email Address"
+                  required
+                />
+              ` : ''}}
+              <input 
+                type="url" 
+                id="af-url" 
+                class="af-input" 
+                placeholder="Enter Your Website URL"
+                required
+              />
+              <button type="submit" class="af-button" id="af-submit">
+                ${{CONFIG.buttonText}}
+              </button>
+              ${{CONFIG.showPoweredBy ? `<p class="af-poweredBy">
+                              Powered by <a href="https://outaudits.com" target="_blank" rel="noopener noreferrer">outaudits</a>
+                            </p>` : ''}}
+            </form>
+            
+            <div id="af-loading" class="af-loading" style="display: none;">
+              <div class="af-spinner"></div>
+              <div class="af-progress" id="af-progress">Analyzing your website...</div>
+            </div>
+            
+            <div id="af-error" class="af-error" style="display: none;"></div>
+          </div>
+          
+          <div id="af-results-container" style="display: none;"></div>
+        </div>
+      </div>
+    `;
+    
+    // Form submission handler
+    const form = document.getElementById('af-form');
+    const loading = document.getElementById('af-loading');
+    const error = document.getElementById('af-error');
+    const formContainer = document.getElementById('af-form-container');
+    const resultsContainer = document.getElementById('af-results-container');
+    
+    form.addEventListener('submit', async (e) => {{
+      e.preventDefault();
+      
+      const url = document.getElementById('af-url').value;
+      const emailInput = document.getElementById('af-email');
+      const email = emailInput ? emailInput.value : null;
+      
+      // Show loading
+      form.style.display = 'none';
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      
+      try {{
+        // Start audit
+        const response = await fetch(API_BASE + '/api/embed/audit', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{
+            api_key: CONFIG.apiKey,
+            url: url,
+            email: email
+          }})
+        }});
+        
+        const data = await response.json();
+        
+        if (!response.ok) {{
+          throw new Error(data.detail || 'Audit failed');
+        }}
+        
+        // Poll for results
+        const jobId = data.job_id;
+        pollResults(jobId);
+        
+      }} catch (err) {{
+        error.textContent = err.message;
+        error.style.display = 'block';
+        form.style.display = 'flex';
+        loading.style.display = 'none';
+      }}
+    }});
+    
+    // Poll for audit results
+    const pollResults = async (jobId) => {{
+      const progressEl = document.getElementById('af-progress');
+      
+      const poll = async () => {{
+        try {{
+          const response = await fetch(API_BASE + `/api/embed/status/${{jobId}}?api_key=${{CONFIG.apiKey}}`);
+          const data = await response.json();
+          
+          if (data.status === 'completed') {{
+            // Fetch and display results in-widget
+            const resultsResponse = await fetch(API_BASE + `/api/embed/results-data/${{jobId}}?api_key=${{CONFIG.apiKey}}`);
+            const resultsData = await resultsResponse.json();
+            displayResults(resultsData, jobId);
+          }} else if (data.status === 'failed') {{
+            throw new Error('Audit failed. Please try again.');
+          }} else {{
+            progressEl.textContent = data.current_status || 'Analyzing your website...';
+            setTimeout(poll, 2000);
+          }}
+        }} catch (err) {{
+          error.textContent = err.message;
+          error.style.display = 'block';
+          form.style.display = 'flex';
+          loading.style.display = 'none';
+        }}
+      }};
+      
+      poll();
+    }};
+    
+    // Display results in-widget
+    const displayResults = (resultsData, jobId) => {{
+      loading.style.display = 'none';
+      formContainer.style.display = 'none';
+      resultsContainer.style.display = 'block';
+      
+      const results = resultsData.results;
+      const score = results.overall_score || 0;
+      
+      // Color based on score
+      const getScoreColor = (s) => s >= 80 ? 'good' : s >= 50 ? 'warning' : 'poor';
+      const getScoreClass = (s) => s >= 80 ? '#059669' : s >= 50 ? '#f59e0b' : '#dc2626';
+      
+      // Build categories HTML
+      let categoriesHtml = '';
+      const categories = [
+        {{ key: 'performance', title: 'Performance' }},
+        {{ key: 'accessibility', title: 'Accessibility' }},
+        {{ key: 'best_practices', title: 'Best Practices' }},
+        {{ key: 'seo', title: 'SEO' }},
+        {{ key: 'pwa', title: 'PWA' }}
+      ];
+      
+      categories.forEach(cat => {{
+        const score = results.lighthouse?.categories?.[cat.key]?.score || 0;
+        const scoreClass = getScoreColor(score);
+        categoriesHtml += `
+          <div class="af-category-card">
+            <div class="af-category-name">${{cat.title}}</div>
+            <div class="af-category-score ${{scoreClass}}">${{Math.round(score)}}</div>
+          </div>
+        `;
+      }});
+      
+      // Build checks grid
+      let checksHtml = '';
+      const checks = [
+        {{ key: 'https', title: 'HTTPS' }},
+        {{ key: 'title_tag', title: 'Title Tag' }},
+        {{ key: 'meta_description', title: 'Meta Description' }},
+        {{ key: 'robots_txt', title: 'Robots.txt' }},
+        {{ key: 'sitemap_xml', title: 'Sitemap.xml' }},
+        {{ key: 'canonical', title: 'Canonical Tag' }}
+      ];
+      
+      checks.forEach(check => {{
+        const passed = results.security?.https || results.technical_seo?.[check.key];
+        const status = passed ? 'pass' : 'fail';
+        const icon = passed ? '✓' : '✕';
+        checksHtml += `
+          <div class="af-check ${{status}}">
+            <span class="af-check-icon">${{icon}}</span>
+            <span>${{check.title}}</span>
+          </div>
+        `;
+      }});
+      
+      resultsContainer.innerHTML = `
+        <div class="af-results">
+          <div class="af-results-header">
+            <h2 class="af-headline">Your SEO Audit Results</h2>
+            <p class="af-results-url">${{resultsData.url}}</p>
+          </div>
+          
+          <div style="text-align: center; margin-bottom: 32px;">
+            <div class="af-score-circle">
+              <svg viewBox="0 0 200 200" width="140" height="140">
+                <circle cx="100" cy="100" r="90" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+                <circle cx="100" cy="100" r="90" fill="none" stroke="${{getScoreClass(score)}}" stroke-width="8"
+                  stroke-dasharray="${{565.48 * score / 100}} 565.48" stroke-linecap="round"/>
+              </svg>
+              <div class="af-score-number">${{Math.round(score)}}</div>
+            </div>
+            <p class="af-score-label">Overall SEO Score</p>
+          </div>
+          
+          <div class="af-categories-grid">
+            ${{categoriesHtml}}
+          </div>
+          
+          <div class="af-checks-section">
+            <h3 class="af-checks-title">All Checks at a Glance</h3>
+            <div class="af-checks-grid">
+              ${{checksHtml}}
+            </div>
+          </div>
+          
+          <div class="af-cta-section">
+            <p class="af-cta-text">Ready to improve your SEO?</p>
+            <div class="af-button-group">
+              <button onclick="window.open('${{resultsData.agency_url || '#'}}', '_blank')" class="af-button">
+                Get Started
+              </button>
+              <button onclick="fetch(API_BASE + '/api/embed/download/${{jobId}}?api_key=${{CONFIG.apiKey}}').then(r => r.blob()).then(b => {{ const url = window.URL.createObjectURL(b); const a = document.createElement('a'); a.href = url; a.download = 'audit-report.pdf'; a.click(); }});" class="af-button-secondary">
+                Download PDF
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -1462,7 +1355,6 @@ async def get_embedded_results(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SEO Audit Results - {user.agency_name}</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             html, body {{ height: 100%; }}
             body {{

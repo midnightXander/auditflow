@@ -139,7 +139,7 @@ class AuditStatus(BaseModel):
 class CrawlRequest(BaseModel):
     """Site crawl request"""
     url: HttpUrl
-    client_name: str
+    client_name: Optional[str]
     max_pages: Optional[int] = 500
     
     class Config:

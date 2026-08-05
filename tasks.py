@@ -55,6 +55,7 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
         metadata={"job_id": job_id, "url": str(url)}
         )
         
+        
     except Exception as e:
         audit.status = "failed"
         audit.error = str(e)
