@@ -658,6 +658,299 @@ def send_trial_expired_email(user):
     queue.enqueue(send_email, user.email, "🔒 Your Pro Trial has expired — claim your 30% discount", html, text)
 
 
+def send_audit_complete_email(
+    email: str,
+    audit_url: str,
+    score: int,
+    website_name: Optional[str] = None,
+    user_name: Optional[str] = None
+):
+    """Send notification when an audit completes."""
+    name = user_name or "there"
+    site = website_name or "your website"
+    emoji = "🎉" if score >= 90 else "✅" if score >= 70 else "⚠️"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #0075FF 0%, #8766FF 100%); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 12px 12px; }}
+        .score {{ font-size: 42px; font-weight: bold; color: #1D4ED8; text-align: center; margin: 24px 0; }}
+        .button {{ display: inline-block; padding: 14px 28px; background: #1D4ED8; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+        .footer {{ margin-top: 30px; color: #6B7280; font-size: 13px; text-align: center; }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>{emoji} Audit Complete</h1>
+          <p>Your SEO audit for {site} is ready.</p>
+        </div>
+        <div class="content">
+          <p>Hi {name},</p>
+          <p>Your website audit has completed successfully. Review the score and recommendations below:</p>
+          <div class="score">{score}/100</div>
+          <p style="text-align:center;">
+            <a href="{audit_url}" class="button">View Full Audit Report</a>
+          </p>
+          <p>If you have questions, reply to this email and we’ll help you interpret the results.</p>
+        </div>
+        <div class="footer">
+          <p>&copy; {datetime.now().year} OutAudits</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Audit Complete
+
+    Hi {name},
+
+    Your SEO audit for {site} is complete.
+
+    Score: {score}/100
+
+    View the full report: {audit_url}
+    """
+
+    queue.enqueue(
+        send_email,
+        email,
+        f"Your audit is ready — Score {score}/100",
+        html,
+        text,
+        retry=Retry(max=3, interval=[10, 30, 60])
+    )
+
+
+def send_deep_crawl_complete_email(
+    email: str,
+    crawl_url: str,
+    pages_crawled: int,
+    issues_found: int,
+    website_name: Optional[str] = None,
+    user_name: Optional[str] = None
+):
+    """Send notification when a deep crawl completes."""
+    name = user_name or "there"
+    site = website_name or "your site"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #0F172A; color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+        .content {{ background: #f8fafc; padding: 30px; border-radius: 0 0 12px 12px; }}
+        .metrics {{ display: flex; justify-content: space-between; gap: 12px; margin: 24px 0; }}
+        .metric-card {{ flex: 1; background: white; padding: 18px; border-radius: 10px; text-align: center; border: 1px solid #E2E8F0; }}
+        .metric-value {{ font-size: 28px; font-weight: 700; color: #111827; }}
+        .button {{ display: inline-block; padding: 14px 28px; background: #0F172A; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+        .footer {{ margin-top: 30px; color: #6B7280; font-size: 13px; text-align: center; }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Deep Crawl Complete</h1>
+          <p>The crawl for {site} has finished.</p>
+        </div>
+        <div class="content">
+          <p>Hi {name},</p>
+          <p>Your deep crawl is complete. Here are the summary details:</p>
+          <div class="metrics">
+            <div class="metric-card">
+              <div class="metric-value">{pages_crawled}</div>
+              <div>Pages crawled</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">{issues_found}</div>
+              <div>Issues found</div>
+            </div>
+          </div>
+          <p style="text-align:center;">
+            <a href="{crawl_url}" class="button">View Crawl Report</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>&copy; {datetime.now().year} OutAudits</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Deep Crawl Complete
+
+    Hi {name},
+
+    The deep crawl for {site} is finished.
+
+    Pages crawled: {pages_crawled}
+    Issues found: {issues_found}
+
+    View the full report: {crawl_url}
+    """
+
+    queue.enqueue(
+        send_email,
+        email,
+        "Deep crawl complete — your report is ready",
+        html,
+        text,
+        retry=Retry(max=3, interval=[10, 30, 60])
+    )
+
+
+def send_comparison_complete_email(
+    email: str,
+    comparison_url: str,
+    target_domain: str,
+    competitor_count: int,
+    user_name: Optional[str] = None
+):
+    """Send notification when competitor comparison completes."""
+    name = user_name or "there"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #047857; color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+        .content {{ background: #f0fdf4; padding: 30px; border-radius: 0 0 12px 12px; }}
+        .highlight {{ font-weight: 700; color: #065f46; }}
+        .button {{ display: inline-block; padding: 14px 28px; background: #047857; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+        .footer {{ margin-top: 30px; color: #4B5563; font-size: 13px; text-align: center; }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Competitor Comparison Ready</h1>
+          <p>Your analysis is complete for {target_domain}.</p>
+        </div>
+        <div class="content">
+          <p>Hi {name},</p>
+          <p>The competitor comparison report is ready. You compared <span class="highlight">{target_domain}</span> against <span class="highlight">{competitor_count}</span> competitor(s).</p>
+          <p style="text-align:center;">
+            <a href="{comparison_url}" class="button">View Comparison Results</a>
+          </p>
+          <p>Use this report to identify opportunities, gaps, and quick wins.</p>
+        </div>
+        <div class="footer">
+          <p>&copy; {datetime.now().year} OutAudits</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Competitor Comparison Ready
+
+    Hi {name},
+
+    Your competitor comparison for {target_domain} is complete.
+    Competitors compared: {competitor_count}
+
+    View the full report: {comparison_url}
+    """
+
+    queue.enqueue(
+        send_email,
+        email,
+        "Competitor comparison complete",
+        html,
+        text,
+        retry=Retry(max=3, interval=[10, 30, 60])
+    )
+
+
+def send_rank_check_complete_email(
+    email: str,
+    report_url: str,
+    domain: str,
+    keywords_checked: int,
+    top_keywords: Optional[list[str]] = None,
+    user_name: Optional[str] = None
+):
+    """Send notification when a rank check completes."""
+    name = user_name or "there"
+    top_keywords_list = ""
+    if top_keywords:
+        top_keywords_list = "<ul>" + "".join(f"<li>{keyword}</li>" for keyword in top_keywords[:5]) + "</ul>"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: Arial, sans-serif; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #9333EA; color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+        .content {{ background: #f8f0fc; padding: 30px; border-radius: 0 0 12px 12px; }}
+        .badge {{ display: inline-block; background: #fff; border-radius: 999px; padding: 8px 16px; color: #6D28D9; font-weight: 700; margin: 12px 0; }}
+        .button {{ display: inline-block; padding: 14px 28px; background: #9333EA; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+        .footer {{ margin-top: 30px; color: #6B7280; font-size: 13px; text-align: center; }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Rank Check Complete</h1>
+          <p>Your keyword ranking report for {domain} is ready.</p>
+        </div>
+        <div class="content">
+          <p>Hi {name},</p>
+          <p>Your rank check completed for <strong>{domain}</strong>.</p>
+          <div class="badge">{keywords_checked} keywords checked</div>
+          {top_keywords_list}
+          <p style="text-align:center;">
+            <a href="{report_url}" class="button">View Rank Report</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>&copy; {datetime.now().year} OutAudits</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Rank Check Complete
+
+    Hi {name},
+
+    The rank check for {domain} is complete.
+    Keywords checked: {keywords_checked}
+
+    View your report: {report_url}
+    """
+
+    queue.enqueue(
+        send_email,
+        email,
+        f"Rank check complete for {domain}",
+        html,
+        text,
+        retry=Retry(max=3, interval=[10, 30, 60])
+    )
+
+
+
 if __name__ == "__main__":
     
     # Example usage

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from db.auth import create_notification
 from db.models import ActivityType, User, Audit, Crawl, Comparison, KeywordAnalysis, BacklinkAnalysis, RefreshToken, RankTracking,RankHistory, TrackedKeyword,KeywordHistory
 from typing import List, Optional
-from services.email_service import send_email
+from services.email_service import send_email, send_audit_complete_email, send_deep_crawl_complete_email
 # Audit engines
 from auditor import WebsiteAuditor
 from apps.crawler import crawl_website
@@ -54,7 +54,9 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
         message=f"Audit for {url} has been completed. check results.",
         metadata={"job_id": job_id, "url": str(url)}
         )
-        
+
+
+
         
     except Exception as e:
         audit.status = "failed"
@@ -69,6 +71,7 @@ def run_crawl_task(job_id: str, url: str, user_id: int, db_session=None):
     db = SessionLocal()
     
     try:
+        print("starting crawl process for job_id: ", job_id)
         crawl = db.query(Crawl).filter(Crawl.job_id == job_id).first()
         crawl.status = "running"
         crawl.progress = 10
@@ -94,7 +97,31 @@ def run_crawl_task(job_id: str, url: str, user_id: int, db_session=None):
         message=f"Deep Crawl for {crawl.url} has been completed.",
         metadata={"job_id": job_id, "url": str(crawl.url)}
     )
-        
+        def count_issues(issues: dict) -> int:
+                """
+                Count the total number of issues across all categories in the issues dict.
+                Handles dicts, lists, and empty values gracefully.
+                """
+                total = 0
+                for category, value in issues.items():
+                    if isinstance(value, dict):
+                        # Count entries in dict
+                        total += len(value)
+                    elif isinstance(value, list):
+                        # Count entries in list
+                        total += len(value)
+                    else:
+                        # If it's something else (unlikely), skip
+                        continue
+                return total
+        total_issues_found = count_issues(results.get("issues", {}))
+        try:
+            print(f"sending email to {crawl.user.email} ...")
+            # send_deep_crawl_complete_email('xyrire543@blondmail.com', crawl.url,results.get("summary").get("total_pages_crawled",0), total_issues_found)
+            send_deep_crawl_complete_email(crawl.user.email, crawl.url,results.get("summary").get("total_pages_crawled",0), total_issues_found)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
+
     except Exception as e:
         crawl.status = "failed"
         crawl.error = str(e)
@@ -128,8 +155,8 @@ async def run_comparison_task2(job_id: str, target_url: str, competitor_urls: Li
         create_notification(
         db=db,
         user_id=user_id,
-        type="comaprison",
-        title="Comaprison completed",
+        type="comparison",
+        title="Comparison completed",
         message=f"Competitor Comparison results for {target_url} are ready.",
         metadata={"job_id": job_id, "url": str(target_url)}
         )

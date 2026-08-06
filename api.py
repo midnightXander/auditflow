@@ -755,8 +755,9 @@ async def list_craws(
 
 
     for c in crawls:
-        total_pages_crawled += c.results.get("summary").get("total_pages_crawled",0)
-        total_issues_found += count_issues(c.results.get("issues",{}))
+        if c.results:
+            total_pages_crawled += c.results.get("summary").get("total_pages_crawled",0)
+            total_issues_found += count_issues(c.results.get("issues",{}))
 
     metadata = {
         'total_pages_crawled' : total_pages_crawled,
@@ -771,8 +772,8 @@ async def list_craws(
             "job_id": c.job_id,
             "url": c.url,
             "status": c.status,
-            "pages_crawled": c.results.get("summary").get("total_pages_crawled",0),
-            "issues_found": count_issues(c.results.get("issues",{})),
+            "pages_crawled": c.results.get("summary").get("total_pages_crawled",0) if c.results else 0,
+            "issues_found": count_issues(c.results.get("issues",{})) if c.results else 0,
             "created_at": c.created_at,
             "completed_at": c.completed_at,
             "results" : c.results,
