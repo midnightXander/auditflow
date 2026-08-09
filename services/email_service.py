@@ -44,8 +44,9 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
     
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = formataddr(("OutAudits Team", FROM_EMAIL))
-    msg['Sender'] = 'OutAudits'
+    msg['From'] = FROM_EMAIL
+    # msg['From'] = formataddr(("OutAudits Team", FROM_EMAIL))
+    # msg['Sender'] = 'OutAudits'
     msg['To'] = to_email
     
     # Add text and HTML parts
@@ -948,6 +949,76 @@ def send_rank_check_complete_email(
         text,
         retry=Retry(max=3, interval=[10, 30, 60])
     )
+
+def send_audit_widget_lead_email(agency_name: str, lead_email:str, website_url:str, 
+                        job_id:str, audit_score: Optional[int], to_email:str,
+                          lead_name: Optional[str] = None, lead_company: Optional[str] = None):
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; color: #333; background: #f4f6fa; margin: 0; padding: 0; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 24px; }}
+        .card {{ background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; padding: 32px; }}
+        .header {{ color: #111827; font-size: 22px; font-weight: 700; margin-bottom: 16px; }}
+        .section-title {{ color: #6b7280; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; margin: 24px 0 12px; }}
+        .detail {{ margin-bottom: 12px; }}
+        .label {{ color: #6b7280; font-size: 14px; }}
+        .value {{ color: #111827; font-size: 15px; font-weight: 600; }}
+        .button {{ display: inline-block; margin-top: 24px; padding: 14px 26px; background: #00A4C6; color: #ffffff; text-decoration: none; border-radius: 8px; }}
+        .footer {{ margin-top: 32px; color: #9CA3AF; font-size: 13px; line-height: 1.5; }}
+    </style>
+    </head>
+    <body>
+    <div class="container">
+        <div class="card">
+        <div class="header">New Embedded Audit Lead</div>
+        <p>Hi {agency_name},</p>
+        <p>A new lead was captured from your embedded audit widget.</p>
+
+        <div class="section-title">Lead Details</div>
+        <div class="detail"><span class="label">Email:</span> <span class="value">{lead_email}</span></div>
+        <div class="detail"><span class="label">Name:</span> <span class="value">{lead_name or 'N/A'}</span></div>
+        <div class="detail"><span class="label">Company:</span> <span class="value">{lead_company or 'N/A'}</span></div>
+
+        <div class="section-title">Audit</div>
+        <div class="detail"><span class="label">Website:</span> <span class="value">{website_url}</span></div>
+        <div class="detail"><span class="label">Audit ID:</span> <span class="value">{job_id}</span></div>
+        <div class="detail"><span class="label">Score:</span> <span class="value">{audit_score if audit_score is not None else 'Pending'}</span></div>
+
+        <p>If the audit is still processing, you can check the status in the dashboard once it completes.</p>
+
+        <a href="{FRONTEND_URL}/audit/embed" class="button">View Lead in Dashboard</a>
+
+        <div class="footer">
+            This request was submitted through your embedded audit widget. 
+            If you want to update your widget settings, visit your dashboard.
+        </div>
+        </div>
+    </div>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    New Embedded Audit Lead
+
+    Agency: {agency_name}
+    Lead email: {lead_email}
+    Lead name: {lead_name or 'N/A'}
+    Company: {lead_company or 'N/A'}
+
+    Website: {website_url}
+    Audit ID: {job_id}
+    Score: {audit_score if audit_score is not None else 'Pending'}
+
+    View the lead in your dashboard:
+    {FRONTEND_URL}/audit/embed
+    """
+    subject = f"New Embedded Audit Lead: {lead_email} from {website_url}"
+    send_email(to_email, subject, html, text)
 
 
 

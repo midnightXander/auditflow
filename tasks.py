@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from db.auth import create_notification
 from db.models import ActivityType, User, Audit, Crawl, Comparison, KeywordAnalysis, BacklinkAnalysis, RefreshToken, RankTracking,RankHistory, TrackedKeyword,KeywordHistory
 from typing import List, Optional
-from services.email_service import send_email, send_audit_complete_email, send_deep_crawl_complete_email
+from services.email_service import send_email, send_audit_complete_email, send_deep_crawl_complete_email, send_comparison_complete_email, send_rank_check_complete_email
 # Audit engines
 from auditor import WebsiteAuditor
 from apps.crawler import crawl_website
@@ -20,6 +20,7 @@ from sqlalchemy import desc, and_
 import asyncio
 import os
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "localhost:3000")
 
 def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
     """Background task for audit (needs separate DB session)"""
@@ -54,6 +55,13 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
         message=f"Audit for {url} has been completed. check results.",
         metadata={"job_id": job_id, "url": str(url)}
         )
+
+        if not audit.is_embedded:
+            try:
+                print(f"sending email to {audit.user.email} ...")
+                send_audit_complete_email(audit.user.email, f'{FRONTEND_URL}/audit/{job_id}', audit.overall_score, audit.client_name, audit.user.full_name)
+            except Exception as e:
+                print(f"Failed to send email: {e}")
 
 
 
@@ -117,8 +125,8 @@ def run_crawl_task(job_id: str, url: str, user_id: int, db_session=None):
         total_issues_found = count_issues(results.get("issues", {}))
         try:
             print(f"sending email to {crawl.user.email} ...")
-            # send_deep_crawl_complete_email('xyrire543@blondmail.com', crawl.url,results.get("summary").get("total_pages_crawled",0), total_issues_found)
-            send_deep_crawl_complete_email(crawl.user.email, crawl.url,results.get("summary").get("total_pages_crawled",0), total_issues_found)
+            #send_deep_crawl_complete_email('denzeldecode@gmail.com', crawl.url,results.get("summary").get("total_pages_crawled",0), total_issues_found)
+            send_deep_crawl_complete_email(crawl.user.email, f'{FRONTEND_URL}/crawl/{job_id}', results.get("summary").get("total_pages_crawled",0), total_issues_found, crawl.client_name, crawl.user.full_name)
         except Exception as e:
             print(f"Failed to send email: {e}")
 
@@ -160,6 +168,13 @@ async def run_comparison_task2(job_id: str, target_url: str, competitor_urls: Li
         message=f"Competitor Comparison results for {target_url} are ready.",
         metadata={"job_id": job_id, "url": str(target_url)}
         )
+
+        try:
+            print(f"sending email to {comparison.user.email} ...")
+            send_comparison_complete_email(comparison.user.email, f'{FRONTEND_URL}/compare/{job_id}', comparison.competitor_urls, comparison.user.full_name)
+            
+        except Exception as e:
+            print(f"Failed to send email: {e}")
         
     except Exception as e:
         comparison.status = "failed"
@@ -221,11 +236,17 @@ def run_comparison_task(job_id: str) -> None:
         create_notification(
         db=db,
         user_id=comp.user_id,
-        type="comaprison",
-        title="Comaprison completed",
+        type="comparison",
+        title="Comparison completed",
         message=f"Competitor Comparison results for {comp.target_url} are ready.",
         metadata={"job_id": job_id, "url": str(comp.target_url)}
         )
+
+        try:
+            print(f"sending email to {comp.user.email} ...")
+            send_comparison_complete_email(comp.user.email, f'{FRONTEND_URL}/compare/{job_id}', len(comp_urls), comp.user.full_name)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
  
     except Exception as exc:
         db.rollback()
@@ -294,6 +315,12 @@ def run_rank_tracking_task(job_id: str, user_id: int):
             tracking.next_check = calculate_next_check(tracking.frequency)
         
         db.commit()
+
+        try:
+            print(f"sending email to {tracking.user.email} ...")
+            send_rank_check_complete_email(tracking.user.email, f'{FRONTEND_URL}/rank-tracker/{job_id}', tracking.domain, len(tracking.keywords), user_name = tracking.user.full_name)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
         
     except Exception as e:
         tracking.status = "failed"

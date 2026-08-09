@@ -2,6 +2,7 @@
 Embeddable Widget - Allow agencies to embed audit tool on their websites
 """
 from datetime import timedelta, datetime
+from sys import exception
 from fastapi import APIRouter,Body, Depends, HTTPException, status, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ import os
 from db.database import get_db
 from db.models import User, Audit, EmbedLead
 from db.auth import can_use_feature, get_current_user
-from services.email_service import send_email
+from services.email_service import send_email, send_audit_widget_lead_email
 from auditor import WebsiteAuditor
 from services.pdf_generator import PDFReportGenerator
 from tasks import run_audit_task
@@ -1354,6 +1355,20 @@ async def start_embedded_audit(
     # Start audit in background (simplified - use background tasks in production)
     # background_tasks.add_task(run_audit_task, job_id, url, user.id, db)
     queue.enqueue(run_audit_task, job_id, url, user.id, retry=Retry(max=3, interval=60))
+
+    try:
+        send_audit_widget_lead_email(
+            agency_name= user.agency_name,
+            lead_email = email,
+            website_url = url,
+            job_id = job_id,
+            audit_score = None,
+            to_email = user.email,
+            # lead_name = None,
+            # lead_company = None
+        )
+    except Exception as e:
+        print(f"Error sending lead email: {e}")
     
     return {
         "job_id": job_id,
