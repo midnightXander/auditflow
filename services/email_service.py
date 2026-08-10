@@ -1018,7 +1018,7 @@ def send_audit_widget_lead_email(agency_name: str, lead_email:str, website_url:s
     {FRONTEND_URL}/audit/embed
     """
     subject = f"New Embedded Audit Lead: {lead_email} from {website_url}"
-    send_email(to_email, subject, html, text)
+    queue.enqueue(send_email, to_email, subject, html, text)
 
 
 

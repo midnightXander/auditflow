@@ -377,6 +377,7 @@ class RankTracker:
 
 async def track_rankings(domain: str, keywords: List[str], engines: Optional[List[str]] = None, progress_callback=None):
     tracker = RankTracker(domain)
+    print(keywords)
     return await tracker.check_rankings(keywords, engines, progress_callback)
 
 

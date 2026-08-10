@@ -318,11 +318,12 @@ def run_rank_tracking_task(job_id: str, user_id: int):
 
         try:
             print(f"sending email to {tracking.user.email} ...")
-            send_rank_check_complete_email(tracking.user.email, f'{FRONTEND_URL}/rank-tracker/{job_id}', tracking.domain, len(tracking.keywords), user_name = tracking.user.full_name)
+            send_rank_check_complete_email("xyrire543@blondmail.com", f'{FRONTEND_URL}/rank-tracker/{job_id}', tracking.domain, len(tracking.keywords), user_name = tracking.user.full_name)
         except Exception as e:
             print(f"Failed to send email: {e}")
         
     except Exception as e:
+        print("Error in run_rank_tracking_task: ", e)
         tracking.status = "failed"
         tracking.error = str(e)
         db.commit()
@@ -330,10 +331,10 @@ def run_rank_tracking_task(job_id: str, user_id: int):
         db.close()
 
 
-async def run_tracking_task(job_id: str, user_id: int) -> None:
+def run_tracking_task(job_id: str, user_id: int) -> None:
     from db.database import SessionLocal
- 
     db: Session = SessionLocal()
+
     try:
         campaign: RankTracking = (
             db.query(RankTracking).filter(RankTracking.job_id == job_id).first()
@@ -352,11 +353,12 @@ async def run_tracking_task(job_id: str, user_id: int) -> None:
 
         for kw_obj in kw_objs:
             for engine in campaign.engines:
-                results = await track_rankings(
+                print(f"Tracking keyword '{kw_obj.keyword}' on engine '{engine}' for domain '{campaign.domain}'...")
+                results = asyncio.run(track_rankings(
                     domain=campaign.domain,
                     keywords=[kw_obj.keyword],
                     engines=[engine],
-                )
+                ))
                 print("results: ",results)
                 campaign.results = results
                 kw_data = results["results"].get(kw_obj.keyword, {}).get(engine, {})
@@ -398,39 +400,47 @@ async def run_tracking_task(job_id: str, user_id: int) -> None:
                 done += 1
                 campaign.progress = int(5 + 90 * done / total)
                 db.commit()
+
             # Save historical data
-            await save_to_history(campaign, results, db)
+            asyncio.run(save_to_history(campaign, results))
             
             # Generate alerts if needed
-            alerts = await check_for_alerts(campaign, db)
+            alerts = asyncio.run(check_for_alerts(campaign))
             
             if alerts:
                 campaign.results['alerts'] = alerts
                 # Send email notification
                 user = db.query(User).filter(User.id == user_id).first()
                 if user:
-                    await send_alert_email(user, campaign, alerts)        
+                    asyncio.run(send_alert_email(user, campaign, alerts))        
 
             campaign.status = "completed"
             campaign.progress = 100
             
             
-            create_notification(
-            db=db,
-            user_id=user.id,
-            type="tracking",
-            title="Tracking Done!",
-            message=f"Results for keyword trackings for {campaign.domain} are ready! click to view.",
-            metadata={"job_id": job_id, "url": str(campaign.domain)})
+        create_notification(
+        db=db,
+        user_id=user_id,
+        type="tracking",
+        title="Tracking Done!",
+        message=f"Results for keyword trackings for {campaign.domain} are ready! click to view.",
+        metadata={"job_id": job_id, "url": str(campaign.domain)})
 
-            campaign.last_checked = datetime.utcnow()
-            if campaign.is_scheduled:
-                campaign.next_check = _next_check_time(campaign.frequency)
-            db.commit()
+        campaign.last_checked = datetime.utcnow()
+        if campaign.is_scheduled:
+            campaign.next_check = _next_check_time(campaign.frequency)
+        db.commit()
+
+        try:
+            print(f"sending email to {campaign.user.email} ...")
+            send_rank_check_complete_email(campaign.user.email, f'{FRONTEND_URL}/rank-tracking/{job_id}', campaign.domain,len(kw_objs), user_name = campaign.user.full_name)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
  
     except Exception as exc:
         db.rollback()
         campaign.status = "failed"
+        print("Error in run_tracking_task: ", exc)
         campaign.error = str(exc)
         db.commit()
     finally:
@@ -441,8 +451,10 @@ def _next_check_time(frequency: str) -> datetime:
     deltas = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1), "monthly": timedelta(days=30)}
     return datetime.utcnow() + deltas.get(frequency, timedelta(days=1))
 
-async def save_to_history(tracking: RankTracking, results: dict, db: Session):
+async def save_to_history(tracking: RankTracking, results: dict):
     """Save rank tracking results to history"""
+    from db.database import SessionLocal
+    db: Session = SessionLocal()
     
     for keyword, engines in results['results'].items():
         for engine, data in engines.items():
@@ -482,9 +494,11 @@ async def save_to_history(tracking: RankTracking, results: dict, db: Session):
     db.commit()
 
 
-async def check_for_alerts(tracking: RankTracking, db: Session) -> List[dict]:
+async def check_for_alerts(tracking: RankTracking) -> List[dict]:
     """Check for significant ranking changes and generate alerts"""
-    
+    from db.database import SessionLocal
+    db: Session = SessionLocal()
+
     alerts = []
     
     for keyword in [kw.keyword for kw in tracking.keywords_rel]:

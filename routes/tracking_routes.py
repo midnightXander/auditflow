@@ -165,13 +165,13 @@ async def create_rank_tracking(
     db=db,
     user_id=current_user.id,
     type="tracking",
-    title="Kewyord tracking started",
-    message=f"Your Rank Tracking Capmpaign for {req.domain} has been queued (job {job_id[:4]}).",
+    title="Keyword tracking started",
+    message=f"Your Rank Tracking Campaign for {req.domain} has been queued (job {job_id[:4]}).",
     metadata={"job_id": job_id, "url": str(req.domain)}
     )
 
     # background_tasks.add_task(run_tracking_task, job_id, current_user.id)
-    queue.enqueue(run_rank_tracking_task, job_id, current_user.id)
+    queue.enqueue(run_tracking_task, job_id, current_user.id)
     
     return CreateTrackingResponse(
         job_id=job_id,
@@ -837,7 +837,7 @@ async def refresh_campaign(
     c.progress = 0
     db.commit()
     # background_tasks.add_task(run_tracking_task, job_id, current_user.id)
-    queue.enqueue(run_rank_tracking_task, job_id, current_user.id)
+    queue.enqueue(run_tracking_task, job_id, current_user.id)
     return {"message": "Refresh started"}
  
  
