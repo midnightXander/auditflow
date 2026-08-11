@@ -15,6 +15,8 @@ import requests
 from bs4 import BeautifulSoup
 import random
 
+    
+
 class WebsiteAuditor:
     """Main class for conducting website audits"""
     
@@ -31,6 +33,7 @@ class WebsiteAuditor:
             "image_optimization": {},
             "structured_data": {},
             "content_quality": {},
+            "business_translation": {},
             "errors": []
         }
     
@@ -626,7 +629,146 @@ class WebsiteAuditor:
             recommendations.append(f"Improve content-to-code ratio (currently {round(ratio, 1)}%)")
         
         return recommendations
+
+    def translate_to_business_language(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Translate technical audit findings into plain-English, business-focused language.
+            """
+            def normalize_score(value):
+                if value is None:
+                    return 0
+                return value if value > 1 else value * 100
     
+            technical = audit_payload.get("technical_seo", {})
+            security = audit_payload.get("security", {})
+            broken = audit_payload.get("broken_links", {})
+            image = audit_payload.get("image_optimization", {})
+            content = audit_payload.get("content_quality", {})
+            lighthouse = audit_payload.get("lighthouse", {}).get("categories", {})
+    
+            perf = normalize_score(lighthouse.get("performance", {}).get("score", 0))
+            seo = normalize_score(lighthouse.get("seo", {}).get("score", 0))
+            access = normalize_score(lighthouse.get("accessibility", {}).get("score", 0))
+            content_score = content.get("score", 0)
+    
+            findings = []
+            friction_score = 0
+    
+            def add_finding(theme, headline, impact, action, weight):
+                nonlocal friction_score
+                findings.append({
+                    "theme": theme,
+                    "headline": headline,
+                    "business_impact": impact,
+                    "recommended_action": action,
+                    "weight": weight,
+                })
+                friction_score += weight
+    
+            if not technical.get("title", {}).get("present", False):
+                add_finding(
+                    "clarity",
+                    "Your page is missing a clear title",
+                    "Visitors and search engines are not getting a strong first impression of what you offer.",
+                    "Add a short title that explains your offer and what makes your business different.",
+                    10,
+                )
+    
+            if not technical.get("meta_description", {}).get("present", False):
+                add_finding(
+                    "message",
+                    "Your page summary is missing",
+                    "You are leaving the first impression up to chance instead of guiding people toward action.",
+                    "Write a concise summary that tells visitors what they gain by staying.",
+                    8,
+                )
+    
+            if not security.get("https", False):
+                add_finding(
+                    "trust",
+                    "Your site may not feel secure enough",
+                    "Security concerns can reduce confidence and make visitors hesitate before taking action.",
+                    "Move the site to HTTPS and keep the certificate current.",
+                    15,
+                )
+    
+            if broken.get("status") == "fail":
+                add_finding(
+                    "dead_ends",
+                    "Some paths on the site are breaking",
+                    "Visitors may hit dead ends and lose trust in the experience.",
+                    "Repair the broken links and remove outdated pages that no longer work.",
+                    12,
+                )
+    
+            if perf < 80:
+                add_finding(
+                    "speed",
+                    "Your site feels slower than it should",
+                    "Slow pages can cause people to leave before they understand your offer.",
+                    "Reduce heavy scripts, compress images, and simplify the page layout.",
+                    10,
+                )
+    
+            if seo < 80:
+                add_finding(
+                    "visibility",
+                    "Your content is harder to discover",
+                    "Important pages may not be surfacing clearly in search results.",
+                    "Improve metadata, structure, and page clarity so people find the right content faster.",
+                    9,
+                )
+    
+            if access < 80:
+                add_finding(
+                    "accessibility",
+                    "Some visitors may struggle to use the site comfortably",
+                    "A less accessible experience can reduce trust and make your message less effective.",
+                    "Improve labels, headings, contrast, and other usability basics.",
+                    7,
+                )
+    
+            if content_score < 60:
+                add_finding(
+                    "value",
+                    "The page content is not doing enough work",
+                    "The site may not be explaining the value of your offer clearly enough.",
+                    "Add more useful, specific content and structure it so visitors can scan quickly.",
+                    6,
+                )
+    
+            if image.get("issues", {}).get("missing_alt_count", 0) > 0:
+                add_finding(
+                    "visuals",
+                    "Some images are not helping the story",
+                    "Important visuals may be missed by visitors and search systems.",
+                    "Add descriptive alt text to the images that matter most.",
+                    5,
+                )
+    
+            if friction_score >= 30:
+                priority = "high"
+                headline = "Your site is creating friction for visitors and growth."
+            elif friction_score >= 15:
+                priority = "medium"
+                headline = "Your site is mostly usable, but a few issues are holding it back."
+            else:
+                priority = "low"
+                headline = "Your site is in good shape, with only minor opportunities to improve."
+    
+            summary = (
+                "This audit points to a few areas where the website is making it harder for people "
+                "to trust the business, find the right information, or take the next step."
+            )
+    
+            return {
+                "priority": priority,
+                "headline": headline,
+                "summary": summary,
+                "business_score": max(0, 100 - friction_score),
+                "findings": findings,
+                "next_steps": [item["recommended_action"] for item in findings[:4]],
+            }
     
 
     async def run_full_audit(self) -> Dict[str, Any]:
@@ -668,6 +810,9 @@ class WebsiteAuditor:
         
         # Calculate overall score
         self.results["overall_score"] = self._calculate_overall_score()
+        self.results["business_translation"] = self.translate_to_business_language(self.results)
+
+        print("Business translation: ",self.results.get("business_translation", {}))
         
         print(f"\n{'='*60}")
         print("Audit complete!")
