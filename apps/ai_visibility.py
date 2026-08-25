@@ -166,7 +166,6 @@ class AIVisibilityAuditor:
     async def _fetch_page_and_robots(self, session: aiohttp.ClientSession) -> str:
         """Fetch the target page and robots.txt. Returns the raw robots.txt text."""
         status, headers, html, elapsed_ms = await self._fetch(session, self.url)
-        print(status, headers, html, elapsed_ms)
         self._headers = headers
         self._html = html
         self._response_time_ms = elapsed_ms

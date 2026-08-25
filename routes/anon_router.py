@@ -116,6 +116,32 @@ def run_anon_audit(session_token: str) -> None:
 
 # ── START ───────────────────────────────────────────────────────────────────────
 
+@router.post("/ai-audit")
+async def start_ai_audit(
+    req: StartAnonAuditRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+):
+    """
+    Testing the Ai visibility audit engine
+    """
+    from db.database import SessionLocal
+    from db.models import AnonymousAudit
+    from apps.ai_visibility import AIVisibilityAuditor
+
+    url = req.url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
+    print(url)    
+
+    auditor = AIVisibilityAuditor(url)
+    results = await auditor.run_full_audit()
+
+    return {
+        "results" : results
+    }
+
 @router.post("/start")
 async def start_anon_audit(
     req: StartAnonAuditRequest,
@@ -153,7 +179,6 @@ async def start_anon_audit(
     queue.enqueue(run_anon_audit, token, retry = Retry(max=3, interval=[10, 30, 60]) )
 
     return {"session_token": token, "status": "pending"}
-
 
 # ── POLL STATUS ─────────────────────────────────────────────────────────────────
 
