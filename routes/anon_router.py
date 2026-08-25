@@ -207,6 +207,7 @@ async def get_anon_results(token: str):
         if row.expires_at and row.expires_at < datetime.utcnow():
             raise HTTPException(410, "Results have expired")
         print(row.crawl_results)
+        
         return {
             "url":           row.url,
             "audit_score":   row.audit_score,
