@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
 import asyncio
 import os
+from apps.ai_visibility import AIVisibilityAuditor
+from db.models import AiVisibilityAudit, Audit
+from urllib.parse import urlparse
+import uuid
+
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "localhost:3000")
 
@@ -46,6 +51,34 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
         audit.results = results
         audit.completed_at = datetime.utcnow()
         db.commit()
+
+        # After audit saved, create AI visibility row and populate with audit results from results['ai_visibility']
+        try:
+            domain = urlparse(url).netloc.replace("www.", "")
+            ai_job_id = str(uuid.uuid4())
+            ai_results =  results.get("ai_visibility", {})
+            if ai_results:
+                ai_row = AiVisibilityAudit(
+                    job_id=ai_job_id,
+                    user_id=user_id,
+                    url=url,
+                    domain=domain,
+                    status="completed",
+                    progress=100,
+                    stage_label="AI Audit Completed",
+                    results = ai_results,
+                    overall_score = ai_results.get("overall_score"),
+                    entity_score = ai_results.get("entity_clarity", {}).get("score"),
+                    eeat_score = ai_results.get("eeat_signals", {}).get("score"),
+                    structure_score = ai_results.get("content_structure", {}).get("score"),
+                    crawlability_score = ai_results.get("crawlability", {}).get("score")
+                )
+                db.add(ai_row)
+                db.commit()
+            
+        except Exception:
+            db.rollback()
+        
         
         create_notification(
         db=db,
@@ -70,6 +103,121 @@ def run_audit_task(job_id: str, url: str, user_id: int, db_session=None):
         audit.status = "failed"
         audit.error = str(e)
         db.commit()
+    finally:
+        db.close()
+
+def run_ai_visibility_task(ai_job_id: str, url: str, user_id: int, db_session=None):
+    """Background job: run Layer-1 AI visibility and attach to Audit."""
+    from db.database import SessionLocal
+    db = SessionLocal()
+    try:
+        ai_row = db.query(AiVisibilityAudit).filter(AiVisibilityAudit.job_id == ai_job_id).first()
+        if not ai_row:
+            return
+
+        ai_row.status = "running"
+        ai_row.progress = 5
+        ai_row.stage_label = "Running Layer 1 (static analysis)…"
+        db.commit()
+
+        auditor = AIVisibilityAuditor(url)
+        results = asyncio.run(auditor.run_full_audit())
+
+        ai_row.overall_score = results.get("overall_score")
+        ai_row.entity_score = results.get("entity_clarity", {}).get("score")
+        ai_row.eeat_score = results.get("eeat_signals", {}).get("score")
+        ai_row.structure_score = results.get("content_structure", {}).get("score")
+        ai_row.crawlability_score = results.get("crawlability", {}).get("score")
+        ai_row.results = results
+        ai_row.status = "completed"
+        ai_row.progress = 100
+        ai_row.completed_at = datetime.utcnow()
+        db.commit()
+
+        # Attach into the most recent Audit row for this user+url (fast heuristic)
+        audit = (
+            db.query(Audit)
+            .filter(Audit.user_id == user_id, Audit.url == url)
+            .order_by(desc(Audit.created_at))
+            .first()
+        )
+        if audit:
+            audit_results = audit.results or {}
+            audit_results["ai_visibility"] = results
+            audit.results = audit_results
+            db.commit()
+
+    except Exception as exc:
+        try:
+            ai_row.status = "failed"
+            ai_row.error = str(exc)
+            db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def run_ai_visibility_layer2_task(ai_job_id: str, brand_queries: list, perplexity_key: str = None, brave_key: str = None):
+    """Background job: run Layer-2 live citation checks and update row + linked audit."""
+    from db.database import SessionLocal
+    db = SessionLocal()
+    try:
+        ai_row = db.query(AiVisibilityAudit).filter(AiVisibilityAudit.job_id == ai_job_id).first()
+        if not ai_row:
+            return
+
+        ai_row.layer2_enabled = True
+        ai_row.layer2_started_at = datetime.utcnow()
+        ai_row.layer2_complete = False
+        ai_row.status = "running"
+        ai_row.stage_label = "Running Layer 2 (live citation checks)…"
+        db.commit()
+
+        auditor = AIVisibilityAuditor(ai_row.url)
+        # We only need layer2 check; reuse check_ai_citations
+        results = asyncio.run(auditor.check_ai_citations(brand_queries, perplexity_api_key=perplexity_key, brave_api_key=brave_key))
+
+        # Update row with citation summary
+        citation_score = 100 if (results.get("perplexity", {}).get("cited") or results.get("brave", {}).get("cited")) else 0
+        ai_row.citation_score = citation_score
+        ai_row.perplexity_cited = results.get("perplexity", {}).get("cited", False)
+        ai_row.brave_cited = results.get("brave", {}).get("cited", False)
+        # merge Layer2 payload into results blob (ensure results exists)
+        blob = ai_row.results or {}
+        blob["ai_citations"] = results
+        ai_row.results = blob
+
+        ai_row.layer2_complete = True
+        ai_row.layer2_completed_at = datetime.utcnow()
+        ai_row.status = "completed"
+        ai_row.progress = 100
+        db.commit()
+
+        # Also update Audit.results if present
+        audit = (
+            db.query(Audit)
+            .filter(Audit.user_id == ai_row.user_id, Audit.url == ai_row.url)
+            .order_by(desc(Audit.created_at))
+            .first()
+        )
+        if audit:
+            ares = audit.results or {}
+            ares.setdefault("ai_visibility", {})
+            ares["ai_visibility"]["ai_citations"] = results
+            audit.results = ares
+            db.commit()
+
+    except Exception as exc:
+        try:
+            ai_row.layer2_complete = False
+            ai_row.layer2_enabled = True
+            ai_row.layer2_completed_at = datetime.utcnow()
+            ai_row.status = "failed"
+            ai_row.error = str(exc)
+            db.commit()
+        except Exception:
+            pass
     finally:
         db.close()
 

@@ -42,8 +42,13 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import aiohttp
+from dotenv import load_dotenv
 import extruct
 from bs4 import BeautifulSoup
+import os
+load_dotenv()
+
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
 
 # ── Reference data ──────────────────────────────────────────────────────
 
@@ -610,40 +615,13 @@ class AIVisibilityAuditor:
         findings.sort(key=lambda f: f["impact"], reverse=True)
         return findings
 
-    # ── orchestration ────────────────────────────────────────────────────
-
-    async def run_full_audit(self) -> Dict[str, Any]:
-        """Run the full Layer 1 static AI-visibility audit."""
-        
-        async with aiohttp.ClientSession() as session:
-            print("Session: ",session)
-            robots_txt = await self._fetch_page_and_robots(session)
-
-            if not self._html:
-                self.results["errors"].append("Could not fetch target page - audit aborted.")
-                self.results["overall_score"] = 0
-                return self.results
-
-            self._extract_schema()
-
-            self.results["entity_clarity"] = self.audit_entity_clarity()
-            self.results["eeat_signals"] = await self.audit_eeat_signals(session)
-            self.results["content_structure"] = self.audit_content_structure()
-            self.results["crawlability"] = self.audit_crawlability(robots_txt)
-
-        scoring = self._calculate_scores()
-        self.results["overall_score"] = scoring["overall_score"]
-        self.results["sub_scores"] = scoring["sub_scores"]
-        self.results["score_weights"] = scoring["weights"]
-        self.results["findings"] = self._build_findings()
-        self.results["top_fixes"] = [f["recommendation"] for f in self.results["findings"][:5]]
-
-        return self.results
+    
 
     # ── Layer 2: live AI citation check (optional, NOT called by run_full_audit) ──
 
     async def check_ai_citations(self, brand_queries: List[str], perplexity_api_key: Optional[str] = None,
                                   brave_api_key: Optional[str] = None) -> Dict[str, Any]:
+        
         """
         Send brand_queries to Perplexity and Brave Search APIs and check whether
         this site's domain shows up in the citations/results. Opt-in (Pro/Agency),
@@ -712,6 +690,38 @@ class AIVisibilityAuditor:
         except Exception as e:
             self.results["errors"].append(f"Brave citation check failed: {str(e)}")
         return {"checked": True, "cited": cited, "results": all_results}
+
+    # ── orchestration ────────────────────────────────────────────────────
+    
+    async def run_full_audit(self) -> Dict[str, Any]:
+        """Run the full Layer 1 static AI-visibility audit."""
+        
+        async with aiohttp.ClientSession() as session:
+            print("Session: ",session)
+            robots_txt = await self._fetch_page_and_robots(session)
+            #self.results["ai_citations"] = await self.check_ai_citations(["Test"], brave_api_key = BRAVE_SEARCH_API_KEY)
+            
+            if not self._html:
+                self.results["errors"].append("Could not fetch target page - audit aborted.")
+                self.results["overall_score"] = 0
+                return self.results
+
+            self._extract_schema()
+
+            self.results["entity_clarity"] = self.audit_entity_clarity()
+            self.results["eeat_signals"] = await self.audit_eeat_signals(session)
+            self.results["content_structure"] = self.audit_content_structure()
+            self.results["crawlability"] = self.audit_crawlability(robots_txt)
+            self.results["ai_citations"] = await self.check_ai_citations(["Test"], brave_api_key = BRAVE_SEARCH_API_KEY)
+
+        scoring = self._calculate_scores()
+        self.results["overall_score"] = scoring["overall_score"]
+        self.results["sub_scores"] = scoring["sub_scores"]
+        self.results["score_weights"] = scoring["weights"]
+        self.results["findings"] = self._build_findings()
+        self.results["top_fixes"] = [f["recommendation"] for f in self.results["findings"][:5]]
+
+        return self.results
 
 
 async def main():

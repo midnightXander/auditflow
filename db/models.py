@@ -125,6 +125,7 @@ class User(Base):
     tracked_keywords   = relationship("TrackedKeyword",  back_populates="user", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    ai_visibility_audits = relationship("AiVisibilityAudit", back_populates="user", cascade="all, delete-orphan")
 
 class Notification(Base):
     """In-app notifications for users"""
@@ -671,3 +672,47 @@ class EmailSequenceLog(Base):
     # Unique constraint: one send per user per slug
     # Enforced in application logic (and can be added as a DB unique index)
     user = relationship("User")
+
+# ── AiVisibilityAudit ──────────────────────────────────────────────────────────
+class AiVisibilityAudit(Base):
+    """
+    AI Visibility audit — Layer 1 (static analysis) + Layer 2 (live citation check).
+    Layer 1 runs immediately; Layer 2 is queued and can complete asynchronously
+    once Perplexity API key is available.
+    """
+    __tablename__ = "ai_visibility_audits"
+ 
+    id      = Column(Integer, primary_key=True, index=True)
+    job_id  = Column(String(36), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+ 
+    url         = Column(String(500), nullable=False)
+    domain      = Column(String(255), nullable=False, index=True)
+    status      = Column(String(20), default="pending")   # pending|running|completed|failed
+    progress    = Column(Integer, default=0)
+    stage_label = Column(String(200), default="Starting…")
+ 
+    # Layer 1 — sub-scores (0-100), denormalised for fast list / dashboard queries
+    overall_score      = Column(Integer, nullable=True)
+    entity_score       = Column(Integer, nullable=True)   # schema + knowledge graph
+    eeat_score         = Column(Integer, nullable=True)   # E-E-A-T signals
+    structure_score    = Column(Integer, nullable=True)   # content structure for LLMs
+    crawlability_score = Column(Integer, nullable=True)   # AI bot access
+ 
+    # Layer 2 — live citation scores (null until Layer 2 runs)
+    citation_score      = Column(Integer, nullable=True)  # 0-100 based on citations found
+    brave_cited         = Column(Boolean, nullable=True)  # found in Brave AI citations
+    perplexity_cited    = Column(Boolean, nullable=True)  # found in Perplexity citations
+    layer2_enabled      = Column(Boolean, default=False)
+    layer2_complete     = Column(Boolean, default=False)
+    layer2_started_at   = Column(DateTime, nullable=True)
+    layer2_completed_at = Column(DateTime, nullable=True)
+ 
+    # Full results blob — everything the frontend needs
+    results      = Column(JSON, nullable=True)
+    error        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, index=True)
+    completed_at = Column(DateTime, nullable=True)
+ 
+    user = relationship("User", back_populates="ai_visibility_audits")
+ 

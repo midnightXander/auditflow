@@ -1,0 +1,241 @@
+{
+  "results": {
+    "url": "https://nike.com",
+    "audit_date": "2026-08-25T21:56:31.625229",
+    "entity_clarity": {
+      "score": 90,
+      "has_json_ld": true,
+      "json_ld_node_count": 3,
+      "schema_types_found": [
+        "Organization",
+        "WebPage",
+        "WebSite"
+      ],
+      "high_value_types_found": [
+        "Organization",
+        "WebPage",
+        "WebSite"
+      ],
+      "high_value_types_missing": [
+        "AggregateRating",
+        "Article",
+        "BlogPosting",
+        "BreadcrumbList",
+        "Corporation",
+        "FAQPage",
+        "HowTo",
+        "LocalBusiness",
+        "NewsArticle",
+        "Person",
+        "Product",
+        "Review"
+      ],
+      "sameas_links": [
+        {
+          "domain": "Wikidata",
+          "url": "https://www.wikidata.org/wiki/Q483915"
+        },
+        {
+          "domain": "Wikipedia",
+          "url": "https://en.wikipedia.org/wiki/Nike,_Inc."
+        },
+        {
+          "domain": "YouTube",
+          "url": "https://www.youtube.com/user/nike"
+        },
+        {
+          "domain": "LinkedIn",
+          "url": "https://www.linkedin.com/company/nike"
+        },
+        {
+          "domain": "Facebook",
+          "url": "https://www.facebook.com/nike"
+        },
+        {
+          "domain": "Twitter/X",
+          "url": "https://twitter.com/nike"
+        },
+        {
+          "domain": "Instagram",
+          "url": "https://www.instagram.com/nike/"
+        }
+      ],
+      "nap_signals": {
+        "name_in_schema": true,
+        "address_in_schema": false,
+        "telephone_in_schema": false
+      },
+      "knowledge_graph_checked": false,
+      "status": "excellent",
+      "recommendations": [
+        "Include address and telephone in Organization/LocalBusiness schema for consistent NAP signals."
+      ]
+    },
+    "eeat_signals": {
+      "score": 66,
+      "author_schema_present": false,
+      "about_page": {
+        "found": true,
+        "path": "/about"
+      },
+      "contact_page": {
+        "found": true,
+        "path": "/contact"
+      },
+      "privacy_policy": {
+        "found": true,
+        "path": "/privacy"
+      },
+      "terms_of_service": {
+        "found": false,
+        "path": null
+      },
+      "https": true,
+      "security_headers": {
+        "strict_transport_security": true,
+        "x_frame_options": true,
+        "x_content_type_options": false,
+        "content_security_policy": true
+      },
+      "status": "good",
+      "recommendations": [
+        "Add Person/author schema with jobTitle and url to bylines - AI systems weigh authored content more heavily when the author is a verifiable entity.",
+        "Add a Terms of Service page."
+      ]
+    },
+    "content_structure": {
+      "score": 35,
+      "has_faq_schema": false,
+      "question_style_headings": [],
+      "has_faq_pattern": false,
+      "heading_structure": {
+        "h1": 1,
+        "h2": 14,
+        "h3": 12,
+        "h4": 90,
+        "h5": 0,
+        "h6": 0
+      },
+      "heading_issues": [],
+      "has_definition_patterns": false,
+      "definition_examples": [],
+      "has_stats_or_citations": true,
+      "external_link_count": 8,
+      "has_freshness_signals": false,
+      "status": "fair",
+      "recommendations": [
+        "Add an FAQ section (with FAQPage schema) - Q&A format maps directly to how people phrase questions to AI assistants.",
+        "Open key sections with a plain definition sentence (\"X is a Y that...\") - this is the exact shape LLMs lift as an extractable fact.",
+        "Add publish/modified dates (visible and in schema) so AI systems can judge content freshness."
+      ]
+    },
+    "crawlability": {
+      "score": 100,
+      "robots_txt_found": true,
+      "bot_status": {
+        "GPTBot": {
+          "label": "OpenAI (ChatGPT)",
+          "allowed": true
+        },
+        "OAI-SearchBot": {
+          "label": "OpenAI (ChatGPT Search)",
+          "allowed": true
+        },
+        "ChatGPT-User": {
+          "label": "OpenAI (ChatGPT browsing plugin)",
+          "allowed": true
+        },
+        "ClaudeBot": {
+          "label": "Anthropic (Claude)",
+          "allowed": true
+        },
+        "Claude-Web": {
+          "label": "Anthropic (Claude browsing)",
+          "allowed": true
+        },
+        "anthropic-ai": {
+          "label": "Anthropic (training crawler)",
+          "allowed": true
+        },
+        "PerplexityBot": {
+          "label": "Perplexity",
+          "allowed": true
+        },
+        "Perplexity-User": {
+          "label": "Perplexity (user-triggered browsing)",
+          "allowed": true
+        },
+        "Google-Extended": {
+          "label": "Google (Gemini / AI Overviews training)",
+          "allowed": true
+        },
+        "Bingbot": {
+          "label": "Microsoft (Copilot)",
+          "allowed": true
+        },
+        "cohere-ai": {
+          "label": "Cohere",
+          "allowed": true
+        }
+      },
+      "blocked_bots": [],
+      "response_time_ms": 312,
+      "status": "excellent",
+      "recommendations": []
+    },
+    "ai_citations": null,
+    "errors": [],
+    "overall_score": 71,
+    "sub_scores": {
+      "entity_clarity": 90,
+      "eeat_signals": 66,
+      "content_structure": 35,
+      "crawlability": 100
+    },
+    "score_weights": {
+      "entity_clarity": 0.3,
+      "eeat_signals": 0.3,
+      "content_structure": 0.25,
+      "crawlability": 0.15
+    },
+    "findings": [
+      {
+        "category": "entity_clarity",
+        "recommendation": "Include address and telephone in Organization/LocalBusiness schema for consistent NAP signals.",
+        "impact": 9
+      },
+      {
+        "category": "eeat_signals",
+        "recommendation": "Add Person/author schema with jobTitle and url to bylines - AI systems weigh authored content more heavily when the author is a verifiable entity.",
+        "impact": 8
+      },
+      {
+        "category": "eeat_signals",
+        "recommendation": "Add a Terms of Service page.",
+        "impact": 8
+      },
+      {
+        "category": "content_structure",
+        "recommendation": "Add an FAQ section (with FAQPage schema) - Q&A format maps directly to how people phrase questions to AI assistants.",
+        "impact": 7
+      },
+      {
+        "category": "content_structure",
+        "recommendation": "Open key sections with a plain definition sentence (\"X is a Y that...\") - this is the exact shape LLMs lift as an extractable fact.",
+        "impact": 7
+      },
+      {
+        "category": "content_structure",
+        "recommendation": "Add publish/modified dates (visible and in schema) so AI systems can judge content freshness.",
+        "impact": 7
+      }
+    ],
+    "top_fixes": [
+      "Include address and telephone in Organization/LocalBusiness schema for consistent NAP signals.",
+      "Add Person/author schema with jobTitle and url to bylines - AI systems weigh authored content more heavily when the author is a verifiable entity.",
+      "Add a Terms of Service page.",
+      "Add an FAQ section (with FAQPage schema) - Q&A format maps directly to how people phrase questions to AI assistants.",
+      "Open key sections with a plain definition sentence (\"X is a Y that...\") - this is the exact shape LLMs lift as an extractable fact."
+    ]
+  }
+}

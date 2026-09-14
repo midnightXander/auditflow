@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 import random
-
+from apps.ai_visibility import AIVisibilityAuditor
     
 
 class WebsiteAuditor:
@@ -630,6 +630,7 @@ class WebsiteAuditor:
         
         return recommendations
 
+
     def translate_to_business_language(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
             """
             Translate technical audit findings into plain-English, business-focused language.
@@ -778,6 +779,12 @@ class WebsiteAuditor:
         print(f"\n{'='*60}")
         print(f"Starting audit for: {self.url}")
         print(f"{'='*60}\n")
+
+        ai_auditor = AIVisibilityAuditor(self.url)
+
+        #AI Visibility audit
+        print("Running AI visibility audit...")
+        self.results['ai_visibility'] = await ai_auditor.run_full_audit() 
         
         # Run Lighthouse audit (async)
         print("1. Running Lighthouse audit...")
@@ -897,6 +904,16 @@ class WebsiteAuditor:
         print(f"AUDIT SUMMARY FOR: {self.url}")
         print(f"{'='*60}")
         print(f"\nOverall Score: {self.results.get('overall_score', 0)}/100\n")
+
+        ai_audit = self.results.get("ai_visibility", {})
+        if ai_audit:
+            print("AI Visibility Audit:")
+            print(f"  - Score: {ai_audit.get('overall_score', 0)}/100")
+            print(f"  - Status: {ai_audit.get('status', 'unknown')}")
+            if ai_audit.get('top_fixes'):
+                print("  - Top Fixes:")
+                for fix in ai_audit['top_fixes']:
+                    print(f"    - {fix}")
         
         # Lighthouse categories
         lighthouse = self.results.get("lighthouse", {})
