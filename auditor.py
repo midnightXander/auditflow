@@ -15,7 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 import random
 from apps.ai_visibility import AIVisibilityAuditor
-    
+from openai import OpenAI    
 
 class WebsiteAuditor:
     """Main class for conducting website audits"""
@@ -36,6 +36,9 @@ class WebsiteAuditor:
             "business_translation": {},
             "errors": []
         }
+        self.client = OpenAI(
+        api_key = os.getenv("DEEPSEEK_API_KEY", "").strip(),
+        base_url="https://api.deepseek.com")
     
     def _normalize_url(self, url: str) -> str:
         """Ensure URL has proper protocol"""
@@ -630,6 +633,104 @@ class WebsiteAuditor:
         
         return recommendations
 
+    def _build_business_prompt(self, audit_payload: Dict[str, Any]) -> str:
+        """Convert raw audit JSON into a compact prompt for the LLM."""
+        lighthouse = audit_payload.get("lighthouse", {}).get("categories", {})
+        technical = audit_payload.get("technical_seo", {})
+        security = audit_payload.get("security", {})
+        broken = audit_payload.get("broken_links", {})
+        image = audit_payload.get("image_optimization", {})
+        content = audit_payload.get("content_quality", {})
+        ai_visibility = audit_payload.get("ai_visibility", {})
+
+        summary = {
+            "url": audit_payload.get("url"),
+            "performance_score": lighthouse.get("performance", {}).get("score", 0),
+            "seo_score": lighthouse.get("seo", {}).get("score", 0),
+            "ai_visibility" : ai_visibility,
+            "accessibility_score": lighthouse.get("accessibility", {}).get("score", 0),
+            "title_present": technical.get("title", {}).get("present", False),
+            "meta_description_present": technical.get("meta_description", {}).get("present", False),
+            "https": security.get("https", False),
+            "broken_link_count": broken.get("broken_count", 0),
+            "broken_status": broken.get("status", "unknown"),
+            "image_score": image.get("score", 0),
+            "missing_alt_count": image.get("issues", {}).get("missing_alt_count", 0),
+            "content_score": content.get("score", 0),
+            "word_count": content.get("word_count", 0),
+            "reading_level": content.get("reading_level", "Unknown"),
+        }
+
+        return json.dumps(summary, indent=2)
+
+    async def translate_to_business_language_llm(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert technical audit data into plain-English business narrative using OpenAI.
+        Keeps output structured so frontend code stays stable.
+        """
+        prompt = f"""
+            You are a senior marketing and web performance consultant.
+        
+            Turn the following website audit results into plain-English, business-friendly language for a non-technical owner.
+            Focus on:
+            - what matters most for growth and trust
+            - why it matters to customers
+            - what action to take next
+            - keep suggestions practical and concise
+        
+            Use this actual audit data:
+            {audit_payload}
+        
+            Return valid JSON only with this exact schema:
+            {{
+                "priority": "high|medium|low",
+                "headline": "short sentence",
+                "summary": "2-3 sentence explanation",
+                "business_score": 0-100,
+                "findings": [
+                    {{
+                    "theme": "speed|visibility|trust|clarity|accessibility|value|dead_ends|visuals",
+                    "headline": "short headline",
+                    "business_impact": "plain English impact",
+                    "recommended_action": "actionable recommendation",
+                    "weight": 1-20
+                    }}
+                ],
+                "next_steps": ["string", "string", "string"]
+                }}
+            """
+        try:
+            response = await self.client.chat.completions.create(
+                model="deepseek-flash",
+                temperature=0.6,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You write concise, business-friendly website audit summaries. Return valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                stream=False,
+                reasoning_effort="high",
+                extra_body={"thinking": {"type": "enabled"}}
+            )
+
+            content = response.choices[0].message.content
+            parsed = json.loads(content)
+            #print(parsed)
+
+            # Minimal validation
+            if not isinstance(parsed.get("findings"), list):
+                raise ValueError("Missing findings list")
+
+            return parsed
+
+        except Exception:
+            # graceful fallback to existing rule-based version
+            return self.translate_to_business_language(audit_payload)
 
     def translate_to_business_language(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
             """
@@ -772,6 +873,8 @@ class WebsiteAuditor:
             }
     
 
+
+
     async def run_full_audit(self) -> Dict[str, Any]:
         """
         Run complete audit including all checks
@@ -817,7 +920,7 @@ class WebsiteAuditor:
         
         # Calculate overall score
         self.results["overall_score"] = self._calculate_overall_score()
-        self.results["business_translation"] = self.translate_to_business_language(self.results)
+        self.results["business_translation"] = self.translate_to_business_language_llm(self.results)
 
         print("Business translation: ",self.results.get("business_translation", {}))
         

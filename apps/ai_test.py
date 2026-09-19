@@ -6,8 +6,8 @@ import os
 import asyncio
 from datetime import datetime
 
-# BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
-BRAVE_SEARCH_API_KEY = "BSAFZ-avpKBrAe7nKWhWF_Cmkn0NqfW"
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "").strip()
 
 async def check_ai_citations(url, brand_queries: List[str], perplexity_api_key: Optional[str] = None,
                                   brave_api_key: Optional[str] = None) -> Dict[str, Any]:
