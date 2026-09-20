@@ -728,7 +728,8 @@ class WebsiteAuditor:
 
             return parsed
 
-        except Exception:
+        except Exception as e:
+            print(e)
             # graceful fallback to existing rule-based version
             return self.translate_to_business_language(audit_payload)
 
@@ -920,9 +921,9 @@ class WebsiteAuditor:
         
         # Calculate overall score
         self.results["overall_score"] = self._calculate_overall_score()
-        self.results["business_translation"] = self.translate_to_business_language_llm(self.results)
+        self.results["business_translation"] = await self.translate_to_business_language_llm(self.results)
 
-        print("Business translation: ",self.results.get("business_translation", {}))
+        print("Business translation llm: ",self.results.get("business_translation", {}))
         
         print(f"\n{'='*60}")
         print("Audit complete!")
