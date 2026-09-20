@@ -663,7 +663,7 @@ class WebsiteAuditor:
 
         return json.dumps(summary, indent=2)
 
-    async def translate_to_business_language_llm(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
+    def translate_to_business_language_llm(self, audit_payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert technical audit data into plain-English business narrative using OpenAI.
         Keeps output structured so frontend code stays stable.
@@ -700,7 +700,7 @@ class WebsiteAuditor:
                 }}
             """
         try:
-            response = await self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model="deepseek-flash",
                 temperature=0.6,
                 messages=[
@@ -921,7 +921,7 @@ class WebsiteAuditor:
         
         # Calculate overall score
         self.results["overall_score"] = self._calculate_overall_score()
-        self.results["business_translation"] = await self.translate_to_business_language_llm(self.results)
+        self.results["business_translation"] = self.translate_to_business_language_llm(self.results)
 
         print("Business translation llm: ",self.results.get("business_translation", {}))
         
