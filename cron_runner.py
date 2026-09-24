@@ -61,22 +61,22 @@ def main() -> None:
 
         # ── 3. Expire anonymous audits (only actually deletes when due) ────────
         log.info("[3/4] Expiring stale anonymous audits…")
-        try:
-            from db.models import AnonymousAudit
-            deleted = (
-                db.query(AnonymousAudit)
-                .filter(
-                    AnonymousAudit.expires_at < datetime.utcnow(),
-                    AnonymousAudit.claimed_by_user_id == None,  # noqa: E711
-                )
-                .delete(synchronize_session=False)
-            )
-            db.commit()
-            log.info("      Deleted %d expired sessions", deleted)
-            print(f"      Deleted {deleted} expired sessions")
-        except Exception as exc:
-            log.error("      FAILED: %s", exc, exc_info=True)
-            errors += 1
+        # try:
+        #     from db.models import AnonymousAudit
+        #     deleted = (
+        #         db.query(AnonymousAudit)
+        #         .filter(
+        #             AnonymousAudit.expires_at < datetime.utcnow(),
+        #             AnonymousAudit.claimed_by_user_id == None,  # noqa: E711
+        #         )
+        #         .delete(synchronize_session=False)
+        #     )
+        #     db.commit()
+        #     log.info("      Deleted %d expired sessions", deleted)
+        #     print(f"      Deleted {deleted} expired sessions")
+        # except Exception as exc:
+        #     log.error("      FAILED: %s", exc, exc_info=True)
+        #     errors += 1
 
         # ── 4. Free Trial Email Reminders & Expirations ───────────────────────
         log.info("[4/4] Processing free trial reminders & expirations…")

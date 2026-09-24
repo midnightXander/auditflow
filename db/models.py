@@ -173,6 +173,17 @@ class Audit(Base):
     # Relationship
     user = relationship("User", back_populates="audits")
 
+class AuditShareLink(Base):
+    """Link to share audit results"""
+    __tablename__ = "audit_share_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    audit_id = Column(Integer, ForeignKey("audits.id"), nullable=False)
+    share_token = Column(String(64), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+
+    audit = relationship("Audit", back_populates="share_links")
+
 class AnonymousAudit(Base):
     """
     A combined audit + crawl run by an unauthenticated visitor.
