@@ -10,7 +10,7 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 from datetime import datetime
-
+import ssl
 from rq_app import queue
 from rq import Retry
 
@@ -51,20 +51,23 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: Opt
     
     # Add text and HTML parts
     if text_content:
-        part1 = MIMEText(text_content, 'plain')
-        msg.attach(part1)
-    
-    part2 = MIMEText(html_content, 'html')
-    msg.attach(part2)
-    
+        msg.attach(MIMEText(text_content, "plain"))
+
+    msg.attach(MIMEText(html_content, "html"))
+
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
+
         print(f"✅ Email sent to {to_email}: {subject}")
     except Exception as e:
-        print(f"❌ Failed to send email to {to_email}: {e}")
+        print(f"❌ SMTP failure for {to_email}: {type(e).__name__}: {e}")
+        
     
 
 
