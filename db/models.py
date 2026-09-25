@@ -172,6 +172,7 @@ class Audit(Base):
     
     # Relationship
     user = relationship("User", back_populates="audits")
+    share_links = relationship("AuditShareLink", back_populates="audit")
 
 class AuditShareLink(Base):
     """Link to share audit results"""
